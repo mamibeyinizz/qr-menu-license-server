@@ -1,0 +1,354 @@
+/**
+ * QR Menu License Server — mobil öncelikli admin stilleri.
+ *
+ * Tüm dokunma hedefleri en az 44px yüksekliktedir, yerleşim tek sütundur.
+ */
+
+.qmls-wrap {
+	max-width: 720px;
+	padding-bottom: 96px;
+}
+
+.qmls-page-title {
+	font-size: 24px;
+	line-height: 1.3;
+	margin: 12px 0 16px;
+}
+
+.qmls-notice {
+	margin: 0 0 16px;
+	font-size: 15px;
+}
+
+.qmls-back-link {
+	display: inline-block;
+	min-height: 44px;
+	line-height: 44px;
+	font-size: 15px;
+	text-decoration: none;
+	margin-bottom: 8px;
+}
+
+/* Butonlar */
+.qmls-wrap .button,
+.qmls-wrap .button-primary {
+	min-height: 44px;
+	line-height: 42px;
+	font-size: 16px;
+	padding: 0 18px;
+}
+
+.qmls-wrap .qmls-button-block {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	text-align: center;
+	margin-bottom: 16px;
+}
+
+.qmls-wrap .qmls-delete-button {
+	color: #b32d2e;
+	border-color: #b32d2e;
+}
+
+/* Liste ekranı kartları */
+.qmls-card-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.qmls-card {
+	display: block;
+	position: relative;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-left: 4px solid #2271b1;
+	border-radius: 4px;
+	padding: 16px 16px 14px;
+	text-decoration: none;
+	color: #1d2327;
+	box-shadow: 0 1px 1px rgba( 0, 0, 0, 0.04 );
+}
+
+.qmls-card:hover,
+.qmls-card:focus {
+	border-color: #2271b1;
+	box-shadow: 0 1px 4px rgba( 0, 0, 0, 0.12 );
+	color: #1d2327;
+}
+
+.qmls-card-title {
+	display: block;
+	font-size: 19px;
+	font-weight: 700;
+	line-height: 1.3;
+	margin-bottom: 8px;
+	padding-right: 84px;
+	word-break: break-word;
+}
+
+.qmls-card-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 14px;
+	color: #50575e;
+}
+
+.qmls-card-domain {
+	word-break: break-all;
+}
+
+.qmls-muted {
+	color: #8c8f94;
+	font-style: italic;
+}
+
+.qmls-badge {
+	position: absolute;
+	top: 16px;
+	right: 16px;
+	display: inline-block;
+	padding: 4px 12px;
+	border-radius: 12px;
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.6;
+	color: #fff;
+}
+
+.qmls-badge-active {
+	background: #00845c;
+}
+
+.qmls-badge-inactive {
+	background: #8c8f94;
+}
+
+.qmls-empty {
+	background: #fff;
+	border: 1px dashed #c3c4c7;
+	border-radius: 4px;
+	padding: 28px 16px;
+	text-align: center;
+	font-size: 16px;
+	color: #50575e;
+}
+
+/* API key kutusu */
+.qmls-keybox {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 16px;
+	margin-bottom: 20px;
+}
+
+.qmls-keybox-label {
+	display: block;
+	font-size: 13px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+	color: #50575e;
+	margin-bottom: 8px;
+}
+
+.qmls-keybox-value {
+	display: block;
+	background: #f0f0f1;
+	border-radius: 4px;
+	padding: 12px;
+	font-size: 15px;
+	line-height: 1.5;
+	word-break: break-all;
+	margin-bottom: 12px;
+}
+
+.qmls-wrap .qmls-copy-button {
+	display: block;
+	width: 100%;
+}
+
+/* Form */
+.qmls-field {
+	margin-bottom: 24px;
+}
+
+.qmls-label {
+	display: block;
+	font-size: 16px;
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.qmls-wrap .qmls-input,
+.qmls-wrap .qmls-textarea {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	font-size: 16px;
+	padding: 10px 12px;
+	min-height: 44px;
+	border-radius: 4px;
+}
+
+.qmls-help {
+	font-size: 13px;
+	color: #50575e;
+	margin: 6px 0 0;
+}
+
+.qmls-domain-value {
+	font-size: 15px;
+	background: #f0f0f1;
+	border-radius: 4px;
+	padding: 12px;
+	margin: 0;
+	word-break: break-all;
+}
+
+/* Modül listesi */
+.qmls-module-list {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #fff;
+	overflow: hidden;
+}
+
+.qmls-module-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 56px;
+	padding: 10px 14px;
+	border-bottom: 1px solid #e5e5e5;
+	cursor: pointer;
+	font-size: 16px;
+}
+
+.qmls-module-item:last-child {
+	border-bottom: 0;
+}
+
+.qmls-module-item input[type="checkbox"] {
+	width: 24px;
+	height: 24px;
+	margin: 0;
+	flex: 0 0 auto;
+}
+
+.qmls-module-label {
+	display: flex;
+	flex-direction: column;
+}
+
+.qmls-module-name {
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+.qmls-module-slug {
+	font-size: 12px;
+	color: #8c8f94;
+	font-family: Consolas, Monaco, monospace;
+}
+
+/* Durum toggle */
+.qmls-switch-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 44px;
+	font-size: 16px;
+	cursor: pointer;
+}
+
+.qmls-switch-input {
+	position: absolute;
+	opacity: 0;
+	width: 1px;
+	height: 1px;
+}
+
+.qmls-switch {
+	position: relative;
+	display: inline-block;
+	flex: 0 0 auto;
+	width: 56px;
+	height: 32px;
+	background: #8c8f94;
+	border-radius: 16px;
+	transition: background 0.15s ease-in-out;
+}
+
+.qmls-switch::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 26px;
+	height: 26px;
+	background: #fff;
+	border-radius: 50%;
+	transition: transform 0.15s ease-in-out;
+}
+
+.qmls-switch-input:checked + .qmls-switch {
+	background: #00845c;
+}
+
+.qmls-switch-input:checked + .qmls-switch::after {
+	transform: translateX( 24px );
+}
+
+.qmls-switch-input:focus + .qmls-switch {
+	box-shadow: 0 0 0 2px #2271b1;
+}
+
+/* Sabit kaydet çubuğu */
+.qmls-sticky-bar {
+	position: sticky;
+	bottom: 0;
+	left: 0;
+	background: #f0f0f1;
+	padding: 12px 0;
+	margin: 0 -4px;
+	border-top: 1px solid #c3c4c7;
+	z-index: 10;
+}
+
+.qmls-wrap .qmls-save-button {
+	margin-bottom: 0;
+	font-size: 17px;
+	font-weight: 600;
+	min-height: 48px;
+	line-height: 46px;
+}
+
+.qmls-secondary-actions {
+	margin-top: 24px;
+}
+
+.qmls-inline-form {
+	margin: 0;
+}
+
+/* Kopyalama geri bildirimi */
+.qmls-copy-button.qmls-copied {
+	border-color: #00845c;
+	color: #00845c;
+}
+
+@media screen and ( min-width: 783px ) {
+	.qmls-page-title {
+		font-size: 26px;
+	}
+
+	.qmls-wrap .qmls-button-block {
+		max-width: 100%;
+	}
+}

@@ -1,0 +1,521 @@
+<?php
+/**
+ * Mobil öncelikli admin arayüzü.
+ *
+ * @package QMLS
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Lisans listesi ve lisans formu ekranlarını yönetir.
+ */
+class QMLS_Admin {
+
+	/**
+	 * Liste ekranı sayfa slug'ı.
+	 */
+	const PAGE_LIST = 'qmls-licenses';
+
+	/**
+	 * Ekleme/düzenleme ekranı sayfa slug'ı.
+	 */
+	const PAGE_EDIT = 'qmls-license-edit';
+
+	/**
+	 * Gerekli yetki.
+	 */
+	const CAPABILITY = 'manage_options';
+
+	/**
+	 * Hook'ları bağlar.
+	 */
+	public function __construct() {
+		add_action( 'admin_menu', array( $this, 'register_menu' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'admin_post_qmls_save_license', array( $this, 'handle_save' ) );
+		add_action( 'admin_post_qmls_unlock_domain', array( $this, 'handle_unlock_domain' ) );
+		add_action( 'admin_post_qmls_delete_license', array( $this, 'handle_delete' ) );
+	}
+
+	/**
+	 * Admin menüsünü kaydeder.
+	 *
+	 * @return void
+	 */
+	public function register_menu() {
+		add_menu_page(
+			__( 'QR Lisanslar', 'qmls' ),
+			__( 'QR Lisanslar', 'qmls' ),
+			self::CAPABILITY,
+			self::PAGE_LIST,
+			array( $this, 'render_list_page' ),
+			'dashicons-tickets-alt',
+			26
+		);
+
+		add_submenu_page(
+			self::PAGE_LIST,
+			__( 'Tüm Lisanslar', 'qmls' ),
+			__( 'Tüm Lisanslar', 'qmls' ),
+			self::CAPABILITY,
+			self::PAGE_LIST,
+			array( $this, 'render_list_page' )
+		);
+
+		add_submenu_page(
+			self::PAGE_LIST,
+			__( 'Yeni Lisans Ekle', 'qmls' ),
+			__( 'Yeni Ekle', 'qmls' ),
+			self::CAPABILITY,
+			self::PAGE_EDIT,
+			array( $this, 'render_edit_page' )
+		);
+	}
+
+	/**
+	 * Sadece plugin ekranlarında CSS/JS yükler.
+	 *
+	 * @param string $hook_suffix Geçerli admin sayfası hook'u.
+	 * @return void
+	 */
+	public function enqueue_assets( $hook_suffix ) {
+		if ( ! $this->is_plugin_screen( $hook_suffix ) ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'qmls-admin',
+			QMLS_PLUGIN_URL . 'assets/css/admin.css',
+			array(),
+			QMLS_VERSION
+		);
+
+		wp_enqueue_script(
+			'qmls-admin',
+			QMLS_PLUGIN_URL . 'assets/js/admin.js',
+			array(),
+			QMLS_VERSION,
+			true
+		);
+
+		wp_localize_script(
+			'qmls-admin',
+			'qmlsAdmin',
+			array(
+				'copied'        => __( 'Kopyalandı!', 'qmls' ),
+				'copy'          => __( 'Kopyala', 'qmls' ),
+				'copyFailed'    => __( 'Kopyalanamadı, key\'i elle seçip kopyalayın.', 'qmls' ),
+				'confirmUnlock' => __( 'Domain kilidi kaldırılsın mı? Müşteri plugin\'i bir sonraki doğrulamada hangi domainde çalışıyorsa oraya kilitlenir.', 'qmls' ),
+				'confirmDelete' => __( 'Bu lisans çöpe taşınsın mı?', 'qmls' ),
+			)
+		);
+	}
+
+	/**
+	 * Geçerli ekranın plugin ekranlarından biri olup olmadığını kontrol eder.
+	 *
+	 * @param string $hook_suffix Geçerli admin sayfası hook'u.
+	 * @return bool Plugin ekranı mı.
+	 */
+	private function is_plugin_screen( $hook_suffix ) {
+		return (
+			false !== strpos( $hook_suffix, self::PAGE_LIST ) ||
+			false !== strpos( $hook_suffix, self::PAGE_EDIT )
+		);
+	}
+
+	/**
+	 * Liste ekranının URL'ini üretir.
+	 *
+	 * @param array<string, string|int> $args Ek query argümanları.
+	 * @return string URL.
+	 */
+	public static function get_list_url( $args = array() ) {
+		return add_query_arg(
+			array_merge( array( 'page' => self::PAGE_LIST ), $args ),
+			admin_url( 'admin.php' )
+		);
+	}
+
+	/**
+	 * Düzenleme ekranının URL'ini üretir.
+	 *
+	 * @param int                       $license_id Lisans ID (0 = yeni kayıt).
+	 * @param array<string, string|int> $args       Ek query argümanları.
+	 * @return string URL.
+	 */
+	public static function get_edit_url( $license_id = 0, $args = array() ) {
+		$query = array( 'page' => self::PAGE_EDIT );
+
+		if ( $license_id > 0 ) {
+			$query['id'] = (int) $license_id;
+		}
+
+		return add_query_arg( array_merge( $query, $args ), admin_url( 'admin.php' ) );
+	}
+
+	/**
+	 * Lisans listesini kart görünümüyle basar.
+	 *
+	 * @return void
+	 */
+	public function render_list_page() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu sayfayı görüntüleme yetkiniz yok.', 'qmls' ) );
+		}
+
+		$licenses = get_posts(
+			array(
+				'post_type'        => QMLS_CPT::POST_TYPE,
+				'post_status'      => array( 'publish', 'draft' ),
+				'posts_per_page'   => 200,
+				'orderby'          => 'title',
+				'order'            => 'ASC',
+				'suppress_filters' => false,
+			)
+		);
+
+		$total_modules = count( QMLS_Helpers::get_module_slugs() );
+		$notice        = isset( $_GET['qmls_notice'] ) ? sanitize_key( wp_unslash( $_GET['qmls_notice'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Sadece bilgilendirme mesajı.
+		?>
+		<div class="wrap qmls-wrap">
+			<h1 class="qmls-page-title"><?php esc_html_e( 'QR Lisanslar', 'qmls' ); ?></h1>
+
+			<?php if ( 'deleted' === $notice ) : ?>
+				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Lisans çöpe taşındı.', 'qmls' ); ?></p></div>
+			<?php endif; ?>
+
+			<a class="button button-primary qmls-button-block" href="<?php echo esc_url( self::get_edit_url() ); ?>">
+				<?php esc_html_e( '+ Yeni Lisans Ekle', 'qmls' ); ?>
+			</a>
+
+			<?php if ( empty( $licenses ) ) : ?>
+				<div class="qmls-empty">
+					<p><?php esc_html_e( 'Henüz lisans kaydı yok.', 'qmls' ); ?></p>
+				</div>
+			<?php else : ?>
+				<div class="qmls-card-list">
+					<?php
+					foreach ( $licenses as $license ) :
+						$status  = get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true );
+						$status  = QMLS_CPT::sanitize_status( $status );
+						$domain  = (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true );
+						$modules = QMLS_Helpers::get_license_modules( $license->ID );
+						$is_on   = QMLS_CPT::STATUS_ACTIVE === $status;
+						?>
+						<a class="qmls-card" href="<?php echo esc_url( self::get_edit_url( $license->ID ) ); ?>">
+							<span class="qmls-card-title"><?php echo esc_html( get_the_title( $license ) ); ?></span>
+							<span class="qmls-badge <?php echo $is_on ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
+								<?php echo $is_on ? esc_html__( 'Aktif', 'qmls' ) : esc_html__( 'Pasif', 'qmls' ); ?>
+							</span>
+							<span class="qmls-card-meta">
+								<?php if ( '' !== $domain ) : ?>
+									<span class="qmls-card-domain"><?php echo esc_html( $domain ); ?></span>
+								<?php else : ?>
+									<span class="qmls-card-domain qmls-muted"><?php esc_html_e( 'Henüz aktifleşmedi', 'qmls' ); ?></span>
+								<?php endif; ?>
+								<span class="qmls-card-modules">
+									<?php
+									printf(
+										/* translators: 1: seçili modül sayısı, 2: toplam modül sayısı */
+										esc_html__( '%1$d/%2$d modül aktif', 'qmls' ),
+										count( $modules ),
+										(int) $total_modules
+									);
+									?>
+								</span>
+							</span>
+						</a>
+					<?php endforeach; ?>
+				</div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Ekleme/düzenleme formunu basar.
+	 *
+	 * @return void
+	 */
+	public function render_edit_page() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu sayfayı görüntüleme yetkiniz yok.', 'qmls' ) );
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Sadece görüntülenecek kaydı ve bildirimi belirliyoruz.
+		$license_id = isset( $_GET['id'] ) ? absint( wp_unslash( $_GET['id'] ) ) : 0;
+		$notice     = isset( $_GET['qmls_notice'] ) ? sanitize_key( wp_unslash( $_GET['qmls_notice'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$license = $license_id > 0 ? get_post( $license_id ) : null;
+
+		if ( $license_id > 0 && ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) ) {
+			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
+		}
+
+		$title    = $license ? $license->post_title : '';
+		$api_key  = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_API_KEY, true ) : '';
+		$domain   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) : '';
+		$status   = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
+		$notes    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
+		$selected = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
+		$modules  = QMLS_Helpers::get_modules();
+		?>
+		<div class="wrap qmls-wrap qmls-form-wrap">
+			<h1 class="qmls-page-title">
+				<?php echo $license ? esc_html__( 'Lisansı Düzenle', 'qmls' ) : esc_html__( 'Yeni Lisans Ekle', 'qmls' ); ?>
+			</h1>
+
+			<a class="qmls-back-link" href="<?php echo esc_url( self::get_list_url() ); ?>">
+				<?php esc_html_e( '← Tüm lisanslar', 'qmls' ); ?>
+			</a>
+
+			<?php if ( 'saved' === $notice ) : ?>
+				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Lisans kaydedildi.', 'qmls' ); ?></p></div>
+			<?php elseif ( 'unlocked' === $notice ) : ?>
+				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Domain kilidi kaldırıldı. Bir sonraki doğrulamada yeni domain kaydedilecek.', 'qmls' ); ?></p></div>
+			<?php elseif ( 'missing_title' === $notice ) : ?>
+				<div class="notice notice-error qmls-notice"><p><?php esc_html_e( 'Firma adı zorunludur.', 'qmls' ); ?></p></div>
+			<?php endif; ?>
+
+			<?php if ( $license && '' !== $api_key ) : ?>
+				<div class="qmls-keybox">
+					<span class="qmls-keybox-label"><?php esc_html_e( 'API Key', 'qmls' ); ?></span>
+					<code class="qmls-keybox-value" id="qmls-api-key"><?php echo esc_html( $api_key ); ?></code>
+					<button type="button" class="button button-secondary qmls-copy-button" data-target="qmls-api-key">
+						<?php esc_html_e( 'Kopyala', 'qmls' ); ?>
+					</button>
+				</div>
+			<?php endif; ?>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-form">
+				<input type="hidden" name="action" value="qmls_save_license" />
+				<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
+				<?php wp_nonce_field( 'qmls_save_license_' . $license_id, 'qmls_nonce' ); ?>
+
+				<div class="qmls-field">
+					<label class="qmls-label" for="qmls-title"><?php esc_html_e( 'Firma Adı', 'qmls' ); ?></label>
+					<input
+						type="text"
+						id="qmls-title"
+						name="firma_adi"
+						class="qmls-input"
+						value="<?php echo esc_attr( $title ); ?>"
+						placeholder="<?php esc_attr_e( 'Örn. X Restoran', 'qmls' ); ?>"
+						required
+					/>
+				</div>
+
+				<div class="qmls-field">
+					<span class="qmls-label"><?php esc_html_e( 'Modüller', 'qmls' ); ?></span>
+					<div class="qmls-module-list">
+						<?php foreach ( $modules as $slug => $label ) : ?>
+							<label class="qmls-module-item">
+								<input
+									type="checkbox"
+									name="allowed_modules[]"
+									value="<?php echo esc_attr( $slug ); ?>"
+									<?php checked( in_array( $slug, $selected, true ) ); ?>
+								/>
+								<span class="qmls-module-label">
+									<span class="qmls-module-name"><?php echo esc_html( $label ); ?></span>
+									<span class="qmls-module-slug"><?php echo esc_html( $slug ); ?></span>
+								</span>
+							</label>
+						<?php endforeach; ?>
+					</div>
+				</div>
+
+				<div class="qmls-field">
+					<span class="qmls-label"><?php esc_html_e( 'Durum', 'qmls' ); ?></span>
+					<label class="qmls-switch-row">
+						<input
+							type="checkbox"
+							name="durum"
+							value="<?php echo esc_attr( QMLS_CPT::STATUS_ACTIVE ); ?>"
+							class="qmls-switch-input"
+							<?php checked( QMLS_CPT::STATUS_ACTIVE, $status ); ?>
+						/>
+						<span class="qmls-switch" aria-hidden="true"></span>
+						<span class="qmls-switch-text"><?php esc_html_e( 'Lisans aktif', 'qmls' ); ?></span>
+					</label>
+				</div>
+
+				<div class="qmls-field">
+					<span class="qmls-label"><?php esc_html_e( 'Domain', 'qmls' ); ?></span>
+					<p class="qmls-domain-value">
+						<?php if ( '' !== $domain ) : ?>
+							<?php
+							printf(
+								/* translators: %s: kayıtlı domain */
+								esc_html__( 'Kayıtlı domain: %s', 'qmls' ),
+								'<strong>' . esc_html( $domain ) . '</strong>'
+							);
+							?>
+						<?php else : ?>
+							<?php esc_html_e( 'Henüz aktifleşmedi', 'qmls' ); ?>
+						<?php endif; ?>
+					</p>
+				</div>
+
+				<div class="qmls-field">
+					<label class="qmls-label" for="qmls-notes"><?php esc_html_e( 'Notlar (opsiyonel)', 'qmls' ); ?></label>
+					<textarea id="qmls-notes" name="notlar" class="qmls-textarea" rows="4"><?php echo esc_textarea( $notes ); ?></textarea>
+					<p class="qmls-help"><?php esc_html_e( 'Sadece sizin takibiniz için; API cevabına dahil edilmez.', 'qmls' ); ?></p>
+				</div>
+
+				<div class="qmls-sticky-bar">
+					<button type="submit" class="button button-primary qmls-button-block qmls-save-button">
+						<?php esc_html_e( 'Kaydet', 'qmls' ); ?>
+					</button>
+				</div>
+			</form>
+
+			<?php if ( $license ) : ?>
+				<div class="qmls-secondary-actions">
+					<?php if ( '' !== $domain ) : ?>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-inline-form">
+							<input type="hidden" name="action" value="qmls_unlock_domain" />
+							<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
+							<?php wp_nonce_field( 'qmls_unlock_domain_' . $license_id, 'qmls_nonce' ); ?>
+							<button type="submit" class="button qmls-button-block qmls-confirm" data-confirm="unlock">
+								<?php esc_html_e( 'Domain kilidini kaldır', 'qmls' ); ?>
+							</button>
+						</form>
+					<?php endif; ?>
+
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-inline-form">
+						<input type="hidden" name="action" value="qmls_delete_license" />
+						<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
+						<?php wp_nonce_field( 'qmls_delete_license_' . $license_id, 'qmls_nonce' ); ?>
+						<button type="submit" class="button qmls-button-block qmls-delete-button qmls-confirm" data-confirm="delete">
+							<?php esc_html_e( 'Lisansı sil', 'qmls' ); ?>
+						</button>
+					</form>
+				</div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Lisans kaydetme isteğini işler.
+	 *
+	 * @return void
+	 */
+	public function handle_save() {
+		$license_id = isset( $_POST['license_id'] ) ? absint( wp_unslash( $_POST['license_id'] ) ) : 0;
+
+		$this->verify_request( 'qmls_save_license_' . $license_id );
+
+		$title = isset( $_POST['firma_adi'] ) ? sanitize_text_field( wp_unslash( $_POST['firma_adi'] ) ) : '';
+
+		if ( '' === $title ) {
+			wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'missing_title' ) ) );
+			exit;
+		}
+
+		$modules = isset( $_POST['allowed_modules'] ) ? (array) wp_unslash( $_POST['allowed_modules'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_modules içinde temizleniyor.
+		$modules = QMLS_Helpers::sanitize_modules( $modules );
+		$status  = isset( $_POST['durum'] ) ? QMLS_CPT::STATUS_ACTIVE : QMLS_CPT::STATUS_INACTIVE;
+		$notes   = isset( $_POST['notlar'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notlar'] ) ) : '';
+
+		if ( $license_id > 0 ) {
+			$license = get_post( $license_id );
+
+			if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
+				wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
+			}
+
+			wp_update_post(
+				array(
+					'ID'         => $license_id,
+					'post_title' => $title,
+				)
+			);
+		} else {
+			$license_id = wp_insert_post(
+				array(
+					'post_type'   => QMLS_CPT::POST_TYPE,
+					'post_title'  => $title,
+					'post_status' => 'publish',
+				),
+				true
+			);
+
+			if ( is_wp_error( $license_id ) ) {
+				wp_die( esc_html( $license_id->get_error_message() ) );
+			}
+
+			update_post_meta( $license_id, QMLS_CPT::META_API_KEY, qmls_generate_api_key() );
+			update_post_meta( $license_id, QMLS_CPT::META_DOMAIN, '' );
+		}
+
+		update_post_meta( $license_id, QMLS_CPT::META_MODULES, $modules );
+		update_post_meta( $license_id, QMLS_CPT::META_STATUS, $status );
+		update_post_meta( $license_id, QMLS_CPT::META_NOTES, $notes );
+
+		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'saved' ) ) );
+		exit;
+	}
+
+	/**
+	 * Domain kilidini kaldırır (domain meta'sını boşaltır).
+	 *
+	 * @return void
+	 */
+	public function handle_unlock_domain() {
+		$license_id = isset( $_POST['license_id'] ) ? absint( wp_unslash( $_POST['license_id'] ) ) : 0;
+
+		$this->verify_request( 'qmls_unlock_domain_' . $license_id );
+
+		$license = get_post( $license_id );
+
+		if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
+			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
+		}
+
+		update_post_meta( $license_id, QMLS_CPT::META_DOMAIN, '' );
+
+		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'unlocked' ) ) );
+		exit;
+	}
+
+	/**
+	 * Lisansı çöpe taşır.
+	 *
+	 * @return void
+	 */
+	public function handle_delete() {
+		$license_id = isset( $_POST['license_id'] ) ? absint( wp_unslash( $_POST['license_id'] ) ) : 0;
+
+		$this->verify_request( 'qmls_delete_license_' . $license_id );
+
+		$license = get_post( $license_id );
+
+		if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
+			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
+		}
+
+		wp_trash_post( $license_id );
+
+		wp_safe_redirect( self::get_list_url( array( 'qmls_notice' => 'deleted' ) ) );
+		exit;
+	}
+
+	/**
+	 * Yetki ve nonce kontrolü yapar.
+	 *
+	 * @param string $action Nonce action adı.
+	 * @return void
+	 */
+	private function verify_request( $action ) {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'qmls' ) );
+		}
+
+		check_admin_referer( $action, 'qmls_nonce' );
+	}
+}
