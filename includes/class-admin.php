@@ -156,6 +156,129 @@ class QMLS_Admin {
 	}
 
 	/**
+	 * Endpoint testinin nonce action adı.
+	 */
+	const NONCE_SELFTEST = 'qmls_selftest';
+
+	/**
+	 * Kendi endpoint'ine gerçek bir istek atarak dışarıdan erişilebilirliğini
+	 * ölçer.
+	 *
+	 * Var olmayan bir key gönderilir; sağlıklı bir kurulumda sunucu
+	 * HTTP 404 + {"status":"invalid"} döndürmelidir.
+	 *
+	 * @return array{ok:bool,message:string,detail:string}|null Test istenmediyse null.
+	 */
+	private function maybe_run_selftest() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( empty( $_GET['qmls_selftest'] ) ) {
+			return null;
+		}
+
+		check_admin_referer( self::NONCE_SELFTEST );
+
+		$response = wp_remote_post(
+			QMLS_REST_API::get_endpoint_url(),
+			array(
+				'timeout' => 15,
+				'headers' => array( 'Content-Type' => 'application/json' ),
+				'body'    => wp_json_encode(
+					array(
+						'api_key' => 'qmls-selftest-' . wp_generate_password( 12, false ),
+						'domain'  => QMLS_Helpers::normalize_domain( home_url() ),
+					)
+				),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'ok'      => false,
+				'message' => __( 'Endpoint\'e bağlanılamadı.', 'qmls' ),
+				'detail'  => $response->get_error_message(),
+			);
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		$body = trim( (string) wp_remote_retrieve_body( $response ) );
+		$data = json_decode( $body, true );
+
+		if ( 404 === $code && isset( $data['status'] ) && 'invalid' === $data['status'] ) {
+			return array(
+				'ok'      => true,
+				'message' => __( 'Endpoint çalışıyor: sunucu beklenen cevabı döndürdü.', 'qmls' ),
+				'detail'  => 'HTTP ' . $code . ' — ' . $body,
+			);
+		}
+
+		return array(
+			'ok'      => false,
+			'message' => __( 'Endpoint beklenmeyen bir cevap döndürdü.', 'qmls' ),
+			'detail'  => 'HTTP ' . $code . ' — ' . mb_substr( $body, 0, 300 ),
+		);
+	}
+
+	/**
+	 * REST endpoint'inin durumunu gösteren teşhis kartını basar.
+	 *
+	 * Müşteri plugin'i sunucuya ulaşamadığında ilk bakılacak yer burasıdır:
+	 * endpoint adresi, route'un gerçekten kayıtlı olup olmadığı ve canlı bir
+	 * bağlantı testi tek ekranda görünür.
+	 *
+	 * @param array{ok:bool,message:string,detail:string}|null $selftest Test sonucu.
+	 * @return void
+	 */
+	private function render_rest_status_card( $selftest ) {
+		$endpoint   = QMLS_REST_API::get_endpoint_url();
+		$registered = QMLS_REST_API::is_route_registered();
+		$plain      = ( false !== strpos( $endpoint, 'rest_route=' ) );
+		$test_url   = wp_nonce_url( self::get_list_url( array( 'qmls_selftest' => 1 ) ), self::NONCE_SELFTEST );
+		?>
+		<div class="qmls-status-card">
+			<h2 class="qmls-status-title"><?php esc_html_e( 'Lisans API durumu', 'qmls' ); ?></h2>
+
+			<p class="qmls-status-row">
+				<span class="qmls-status-label"><?php esc_html_e( 'Endpoint', 'qmls' ); ?></span>
+				<code class="qmls-status-value"><?php echo esc_html( $endpoint ); ?></code>
+			</p>
+
+			<p class="qmls-status-row">
+				<span class="qmls-status-label"><?php esc_html_e( 'Route kaydı', 'qmls' ); ?></span>
+				<span class="qmls-badge <?php echo $registered ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
+					<?php
+					echo $registered
+						? esc_html__( 'Kayıtlı', 'qmls' )
+						: esc_html__( 'Kayıtlı değil', 'qmls' );
+					?>
+				</span>
+			</p>
+
+			<p class="qmls-status-row">
+				<span class="qmls-status-label"><?php esc_html_e( 'Plugin sürümü', 'qmls' ); ?></span>
+				<span class="qmls-status-value"><?php echo esc_html( QMLS_VERSION ); ?></span>
+			</p>
+
+			<?php if ( $plain ) : ?>
+				<p class="qmls-help">
+					<?php esc_html_e( 'Kalıcı bağlantılar "sade" ayarda: bu sitede /wp-json/ adresi çalışmaz, endpoint yalnızca yukarıdaki ?rest_route= biçimiyle erişilebilir. Ayarlar → Kalıcı Bağlantılar ekranından "Yazı adı" gibi bir seçenek kaydedilmesi önerilir.', 'qmls' ); ?>
+				</p>
+			<?php endif; ?>
+
+			<?php if ( is_array( $selftest ) ) : ?>
+				<div class="notice <?php echo $selftest['ok'] ? 'notice-success' : 'notice-error'; ?> qmls-notice">
+					<p><strong><?php echo esc_html( $selftest['message'] ); ?></strong></p>
+					<p><code><?php echo esc_html( $selftest['detail'] ); ?></code></p>
+				</div>
+			<?php endif; ?>
+
+			<a class="button qmls-button-block" href="<?php echo esc_url( $test_url ); ?>">
+				<?php esc_html_e( 'Bağlantıyı test et', 'qmls' ); ?>
+			</a>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Lisans listesini kart görünümüyle basar.
 	 *
 	 * @return void
@@ -178,6 +301,7 @@ class QMLS_Admin {
 
 		$total_modules = count( QMLS_Helpers::get_module_slugs() );
 		$notice        = isset( $_GET['qmls_notice'] ) ? sanitize_key( wp_unslash( $_GET['qmls_notice'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Sadece bilgilendirme mesajı.
+		$selftest      = $this->maybe_run_selftest();
 		?>
 		<div class="wrap qmls-wrap">
 			<h1 class="qmls-page-title"><?php esc_html_e( 'QR Lisanslar', 'qmls' ); ?></h1>
@@ -185,6 +309,8 @@ class QMLS_Admin {
 			<?php if ( 'deleted' === $notice ) : ?>
 				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Lisans çöpe taşındı.', 'qmls' ); ?></p></div>
 			<?php endif; ?>
+
+			<?php $this->render_rest_status_card( $selftest ); ?>
 
 			<a class="button button-primary qmls-button-block" href="<?php echo esc_url( self::get_edit_url() ); ?>">
 				<?php esc_html_e( '+ Yeni Lisans Ekle', 'qmls' ); ?>

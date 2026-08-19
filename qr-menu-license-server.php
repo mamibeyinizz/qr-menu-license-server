@@ -27,6 +27,14 @@ require_once QMLS_PLUGIN_DIR . 'includes/class-cpt.php';
 require_once QMLS_PLUGIN_DIR . 'includes/class-admin.php';
 require_once QMLS_PLUGIN_DIR . 'includes/class-rest-api.php';
 
+/*
+ * REST route'u plugin yüklenirken bağlanır: endpoint'in varlığı
+ * plugins_loaded zincirine ya da başka bir bileşenin başlatılmasına bağlı
+ * kalmaz. rest_api_init zaten çok daha geç tetiklendiği için erken bağlamanın
+ * bir maliyeti yoktur.
+ */
+QMLS_REST_API::init();
+
 /**
  * Plugin bileşenlerini başlatır.
  *
@@ -37,7 +45,6 @@ function qmls_init() {
 
 	new QMLS_CPT();
 	new QMLS_Admin();
-	new QMLS_REST_API();
 }
 add_action( 'plugins_loaded', 'qmls_init' );
 

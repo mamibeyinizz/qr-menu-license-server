@@ -352,3 +352,47 @@
 		max-width: 100%;
 	}
 }
+
+/* Lisans API durum kartı */
+.qmls-status-card {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 10px;
+	padding: 16px;
+	margin: 0 0 16px;
+}
+
+.qmls-status-title {
+	font-size: 16px;
+	margin: 0 0 12px;
+	padding: 0;
+}
+
+.qmls-status-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 12px;
+	margin: 0 0 10px;
+	min-height: 32px;
+}
+
+.qmls-status-label {
+	color: #50575e;
+	font-size: 13px;
+	min-width: 110px;
+}
+
+.qmls-status-value {
+	font-size: 13px;
+	word-break: break-all;
+}
+
+.qmls-status-card .qmls-notice {
+	margin: 12px 0;
+}
+
+.qmls-status-card .qmls-notice code {
+	word-break: break-all;
+	font-size: 12px;
+}
