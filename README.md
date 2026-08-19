@@ -27,6 +27,8 @@ qr-menu-license-server/
   assets/
     css/admin.css              mobil öncelikli stiller
     js/admin.js                kopyala butonu, onay diyalogları
+  tools/
+    qmls-diagnostic.php        bağımsız teşhis aracı (plugin tarafından yüklenmez)
 ```
 
 ## Lisans kaydı
@@ -138,3 +140,40 @@ Plugin'i etkinleştirdikten sonra:
 5. Lisansı Pasif yapıp tekrar çağırın → `{"status":"inactive"}`.
 6. "Domain kilidini kaldır" deyip yeni bir domain ile çağırın → tekrar `active` dönmeli ve
    yeni domain kilitlenmeli.
+
+## Endpoint görünmüyorsa: teşhis
+
+`/wp-json/` çıktısındaki `namespaces` listesinde `qmls/v1` yoksa, sorunun kodda mı
+sunucuda mı olduğunu ayırt etmek için `tools/qmls-diagnostic.php` dosyasını sunucuda
+şu konuma kopyalayın:
+
+```
+wp-content/mu-plugins/qmls-diagnostic.php
+```
+
+`mu-plugins` klasöründeki dosyalar her zaman yüklenir; bu yüzden rapor, plugin hiç
+yüklenmese bile çalışır. Ardından **Araçlar → QMLS Teşhis** ekranını açın. Rapor şunları
+gösterir:
+
+- plugin klasöründeki her dosya: var mı, boyutu, değiştirilme tarihi, md5 özeti
+  (sunucudaki kopyanın depodakiyle aynı olup olmadığını buradan anlarsınız),
+- plugin `active_plugins` içinde mi, ağ genelinde mi aktif,
+- `QMLS_VERSION` sabiti ve dört sınıfın gerçekten yüklenip yüklenmediği,
+- `/qmls/v1/validate` route'unun REST sunucusuna kayıtlı olup olmadığı,
+- REST'e müdahale eden filtrelere (`rest_endpoints`, `rest_pre_dispatch`,
+  `rest_authentication_errors`) bağlı callback isimleri — tanımadığınız bir isim,
+  route'u gizleyen eklentiyi işaret eder,
+- genel `/wp-json/` indeksinin ve endpoint'in canlı test sonucu,
+- `wp-content/debug.log` içindeki ilgili hata satırları.
+
+Yorumlama:
+
+| Rapor | Anlamı |
+| --- | --- |
+| Dosyalar ✗ veya md5'ler depodakinden farklı | Sunucudaki kopya eksik/eski: dosyaları yeniden yükleyin |
+| `active_plugins içinde` ✗ | Plugin aktif değil: Eklentiler ekranından etkinleştirin |
+| Sınıflar ✗ | Dosyalar var ama yüklenmiyor: hata kaydı bölümüne bakın |
+| Route ✓ ama indekste `qmls/v1` yok | Route kayıtlı, dışarıya sızdıran katman engelliyor: önbellek (LiteSpeed → Purge All) veya REST'i kısıtlayan güvenlik eklentisi |
+| Endpoint POST testi ✓ (`{"status":"invalid"}`) | Endpoint sağlıklı çalışıyor |
+
+Teşhis bitince dosyayı silin; yalnızca okuma yapar, hiçbir ayarı değiştirmez.

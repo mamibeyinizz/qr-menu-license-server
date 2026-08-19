@@ -28,6 +28,18 @@ class QMLS_Admin {
 	const CAPABILITY = 'manage_options';
 
 	/**
+	 * Üst menünün konumu.
+	 *
+	 * WordPress menü satırlarını $menu dizisinde konumu anahtar yaparak tutar
+	 * ($menu['26']). Aynı tam sayı konumunu kullanan başka bir plugin (ör. eski
+	 * QR Menu Official de 26'yı kullanıyor) o slotu ezdiğinde menü hiç
+	 * görünmez. Ondalıklı ve bize özgü bir konum bu çakışmayı önler.
+	 *
+	 * @var float
+	 */
+	const MENU_POSITION = 58.2;
+
+	/**
 	 * Hook'ları bağlar.
 	 */
 	public function __construct() {
@@ -51,7 +63,7 @@ class QMLS_Admin {
 			self::PAGE_LIST,
 			array( $this, 'render_list_page' ),
 			'dashicons-tickets-alt',
-			26
+			self::MENU_POSITION
 		);
 
 		add_submenu_page(
