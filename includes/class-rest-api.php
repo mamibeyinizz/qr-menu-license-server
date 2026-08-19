@@ -23,10 +23,71 @@ class QMLS_REST_API {
 	const ROUTE_VALIDATE = '/validate';
 
 	/**
+	 * Tekil örnek.
+	 *
+	 * @var QMLS_REST_API|null
+	 */
+	private static $instance = null;
+
+	/**
+	 * Tekil örneği döndürür.
+	 *
+	 * @return QMLS_REST_API
+	 */
+	public static function instance() {
+		if ( null === self::$instance ) {
+			self::$instance = new self();
+		}
+
+		return self::$instance;
+	}
+
+	/**
+	 * Route kaydını bağlar.
+	 *
+	 * Ana dosyadan, plugin yüklenirken (plugins_loaded beklemeden) çağrılır:
+	 * endpoint'in varlığı başka bir bileşenin başlatılmasına bağlı kalmasın.
+	 * Aynı nesne/metot çifti WordPress tarafından tek kez kaydedilir, bu yüzden
+	 * birden fazla çağrı route'u çiftlemez.
+	 *
+	 * @return void
+	 */
+	public static function init() {
+		add_action( 'rest_api_init', array( self::instance(), 'register_routes' ) );
+	}
+
+	/**
 	 * Hook'ları bağlar.
 	 */
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+	}
+
+	/**
+	 * Doğrulama endpoint'inin tam adresi.
+	 *
+	 * @return string
+	 */
+	public static function get_endpoint_url() {
+		return rest_url( self::NAMESPACE_V1 . self::ROUTE_VALIDATE );
+	}
+
+	/**
+	 * Route bu istekte REST sunucusuna kayıtlı mı?
+	 *
+	 * Teşhis amaçlıdır: admin ekranında endpoint'in gerçekten kayıtlı olup
+	 * olmadığını göstermek için kullanılır.
+	 *
+	 * @return bool
+	 */
+	public static function is_route_registered() {
+		if ( ! function_exists( 'rest_get_server' ) ) {
+			return false;
+		}
+
+		$routes = rest_get_server()->get_routes( self::NAMESPACE_V1 );
+
+		return isset( $routes[ '/' . self::NAMESPACE_V1 . self::ROUTE_VALIDATE ] );
 	}
 
 	/**
