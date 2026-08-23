@@ -51,16 +51,17 @@ checkbox listesi ve API doğrulaması aynı listeyi kullanır. Dışarıdan ekle
 `qmls_modules` filtresi de kullanılabilir.
 
 Mevcut modüller: `restoran-menu`, `yorum-feedback`, `qr-masa`, `qr-analiz`, `qr-galeri`,
-`qr-ceviri`, `qr-chatbot`, `qr-calisma-saatleri`, `qr-masa-oturum-guvenligi`.
+`qr-ceviri`, `qr-chatbot`, `qr-calisma-saatleri`, `qr-masa-oturum-guvenligi`,
+`qr-acilis-ekrani`.
 
 ## Admin arayüzü
 
 Arayüz mobil önceliklidir: tablo yoktur, her lisans dikey bir karttır, tüm dokunma
 hedefleri en az 44px yüksekliktedir.
 
-- **QR Lisanslar** (liste): firma adı, durum rozeti, domain, "X/9 modül aktif" bilgisi.
+- **QR Lisanslar** (liste): firma adı, durum rozeti, domain, "X/10 modül aktif" bilgisi.
   Üstte tam genişlikte "+ Yeni Lisans Ekle" butonu; karta dokununca düzenleme ekranı açılır.
-- **Düzenleme ekranı**: tek sütun form — Firma Adı → Modül seçimi (9 adet, büyük satırlar)
+- **Düzenleme ekranı**: tek sütun form — Firma Adı → Modül seçimi (10 adet, büyük satırlar)
   → Durum toggle → Notlar. Kaydet butonu ekranın altında sabittir (sticky).
   Kayıttan sonra API key büyük bir kutuda ve tek dokunuşluk "Kopyala" butonuyla gösterilir.
 - **Domain** alanı salt okunurdur: "Kayıtlı domain: X" ya da "Henüz aktifleşmedi".

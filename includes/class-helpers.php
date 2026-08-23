@@ -31,6 +31,7 @@ class QMLS_Helpers {
 			'qr-chatbot'                => __( 'QR Chatbot', 'qmls' ),
 			'qr-calisma-saatleri'       => __( 'QR Çalışma Saatleri', 'qmls' ),
 			'qr-masa-oturum-guvenligi'  => __( 'QR Masa Oturum Güvenliği', 'qmls' ),
+			'qr-acilis-ekrani'          => __( 'Açılış Ekranı', 'qmls' ),
 		);
 
 		/**
