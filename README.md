@@ -51,7 +51,8 @@ checkbox listesi ve API doğrulaması aynı listeyi kullanır. Dışarıdan ekle
 `qmls_modules` filtresi de kullanılabilir.
 
 Mevcut modüller: `restoran-menu`, `yorum-feedback`, `qr-masa`, `qr-analiz`, `qr-galeri`,
-`qr-ceviri`, `qr-chatbot`, `qr-calisma-saatleri`, `qr-masa-oturum-guvenligi`.
+`qr-ceviri`, `qr-chatbot`, `qr-calisma-saatleri`, `qr-masa-oturum-guvenligi`,
+`qr-acilis-ekrani`.
 
 ## Admin arayüzü
 
