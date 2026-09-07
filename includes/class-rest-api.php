@@ -23,6 +23,16 @@ class QMLS_REST_API {
 	const ROUTE_VALIDATE = '/validate';
 
 	/**
+	 * Hız sınırlama penceresi başına izin verilen istek sayısı.
+	 */
+	const RATE_LIMIT_MAX = 20;
+
+	/**
+	 * Hız sınırlama penceresi (saniye).
+	 */
+	const RATE_LIMIT_WINDOW = 60;
+
+	/**
 	 * Tekil örnek.
 	 *
 	 * @var QMLS_REST_API|null
@@ -116,12 +126,44 @@ class QMLS_REST_API {
 	}
 
 	/**
+	 * İsteği yapan istemcinin IP adresine göre hız sınırlaması uygular.
+	 *
+	 * Public ve sadece api_key ile korunan bir endpoint olduğundan, key
+	 * brute-force denemelerini ve gereksiz veritabanı yükünü sınırlamak için
+	 * IP başına kısa pencereli bir sayaç tutulur.
+	 *
+	 * @return bool İstek sınırı aşıldıysa true.
+	 */
+	private function is_rate_limited() {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+
+		if ( '' === $ip ) {
+			return false;
+		}
+
+		$key   = 'qmls_rl_' . md5( $ip );
+		$count = (int) get_transient( $key );
+
+		if ( $count >= self::RATE_LIMIT_MAX ) {
+			return true;
+		}
+
+		set_transient( $key, $count + 1, self::RATE_LIMIT_WINDOW );
+
+		return false;
+	}
+
+	/**
 	 * API key ve domain doğrulaması yapar.
 	 *
 	 * @param WP_REST_Request $request İstek nesnesi.
 	 * @return WP_REST_Response JSON yanıtı.
 	 */
 	public function validate( WP_REST_Request $request ) {
+		if ( $this->is_rate_limited() ) {
+			return new WP_REST_Response( array( 'status' => 'rate_limited' ), 429 );
+		}
+
 		$api_key = (string) $request->get_param( 'api_key' );
 		$domain  = QMLS_Helpers::normalize_domain( (string) $request->get_param( 'domain' ) );
 
@@ -151,8 +193,29 @@ class QMLS_REST_API {
 				);
 			}
 
-			update_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, $domain );
-			$saved_domain = $domain;
+			/*
+			 * İlk aktivasyon yazımı atomik yapılır: aynı anda gelen yarışan
+			 * isteklerden yalnızca meta değeri hâlâ boşken yazan kazanır.
+			 * update_post_meta() bunu garanti etmez (oku-sonra-yaz), bu yüzden
+			 * doğrudan koşullu bir UPDATE kullanılır.
+			 */
+			global $wpdb;
+
+			$locked = (bool) $wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE post_id = %d AND meta_key = %s AND meta_value = ''",
+					$domain,
+					$license->ID,
+					QMLS_CPT::META_DOMAIN
+				)
+			);
+
+			// Doğrudan $wpdb yazımı meta cache'ini güncellemez; kalıcı object cache'te bayatlamayı önle.
+			wp_cache_delete( $license->ID, 'post_meta' );
+
+			$saved_domain = $locked
+				? $domain
+				: QMLS_Helpers::normalize_domain( get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) );
 		}
 
 		if ( $saved_domain !== $domain ) {
