@@ -341,12 +341,17 @@ class QMLS_Admin {
 						$domain  = (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true );
 						$modules = QMLS_Helpers::get_license_modules( $license->ID );
 						$is_on   = QMLS_CPT::STATUS_ACTIVE === $status;
+						$expired = QMLS_Helpers::is_expired( $license->ID );
 						?>
 						<a class="qmls-card" href="<?php echo esc_url( self::get_edit_url( $license->ID ) ); ?>">
 							<span class="qmls-card-title"><?php echo esc_html( get_the_title( $license ) ); ?></span>
-							<span class="qmls-badge <?php echo $is_on ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
-								<?php echo $is_on ? esc_html__( 'Aktif', 'qmls' ) : esc_html__( 'Pasif', 'qmls' ); ?>
-							</span>
+							<?php if ( $expired ) : ?>
+								<span class="qmls-badge qmls-badge-inactive"><?php esc_html_e( 'Süresi doldu', 'qmls' ); ?></span>
+							<?php else : ?>
+								<span class="qmls-badge <?php echo $is_on ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
+									<?php echo $is_on ? esc_html__( 'Aktif', 'qmls' ) : esc_html__( 'Pasif', 'qmls' ); ?>
+								</span>
+							<?php endif; ?>
 							<span class="qmls-card-meta">
 								<?php if ( '' !== $domain ) : ?>
 									<span class="qmls-card-domain"><?php echo esc_html( $domain ); ?></span>
@@ -398,6 +403,7 @@ class QMLS_Admin {
 		$domain   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) : '';
 		$status   = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
 		$notes    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
+		$expires  = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
 		$selected = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
 		$modules  = QMLS_Helpers::get_modules();
 		?>
@@ -498,6 +504,18 @@ class QMLS_Admin {
 				</div>
 
 				<div class="qmls-field">
+					<label class="qmls-label" for="qmls-expires"><?php esc_html_e( 'Son kullanma tarihi (opsiyonel)', 'qmls' ); ?></label>
+					<input
+						type="date"
+						id="qmls-expires"
+						name="expires_at"
+						class="qmls-input"
+						value="<?php echo esc_attr( $expires ); ?>"
+					/>
+					<p class="qmls-help"><?php esc_html_e( 'Boş bırakılırsa lisansın süresi dolmaz.', 'qmls' ); ?></p>
+				</div>
+
+				<div class="qmls-field">
 					<span class="qmls-label"><?php esc_html_e( 'Domain', 'qmls' ); ?></span>
 					<p class="qmls-domain-value">
 						<?php if ( '' !== $domain ) : ?>
@@ -575,6 +593,7 @@ class QMLS_Admin {
 		$modules = QMLS_Helpers::sanitize_modules( $modules );
 		$status  = isset( $_POST['durum'] ) ? QMLS_CPT::STATUS_ACTIVE : QMLS_CPT::STATUS_INACTIVE;
 		$notes   = isset( $_POST['notlar'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notlar'] ) ) : '';
+		$expires = isset( $_POST['expires_at'] ) ? QMLS_Helpers::sanitize_expiry_date( wp_unslash( $_POST['expires_at'] ) ) : '';
 
 		if ( $license_id > 0 ) {
 			$license = get_post( $license_id );
@@ -610,6 +629,7 @@ class QMLS_Admin {
 		update_post_meta( $license_id, QMLS_CPT::META_MODULES, $modules );
 		update_post_meta( $license_id, QMLS_CPT::META_STATUS, $status );
 		update_post_meta( $license_id, QMLS_CPT::META_NOTES, $notes );
+		update_post_meta( $license_id, QMLS_CPT::META_EXPIRES, $expires );
 
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'saved' ) ) );
 		exit;

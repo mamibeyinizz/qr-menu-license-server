@@ -197,6 +197,16 @@ class QMLS_REST_API {
 			return new WP_REST_Response( array( 'status' => 'inactive' ), 200 );
 		}
 
+		if ( QMLS_Helpers::is_expired( $license->ID ) ) {
+			return new WP_REST_Response(
+				array(
+					'status'  => 'expired',
+					'modules' => array(),
+				),
+				200
+			);
+		}
+
 		$saved_domain = QMLS_Helpers::normalize_domain( get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) );
 
 		if ( '' === $saved_domain ) {

@@ -38,6 +38,11 @@ class QMLS_CPT {
 	const META_MODULES = 'allowed_modules';
 
 	/**
+	 * Son kullanma tarihi meta anahtarı ("Y-m-d"; boş = süresiz).
+	 */
+	const META_EXPIRES = 'expires_at';
+
+	/**
 	 * Notlar meta anahtarı.
 	 */
 	const META_NOTES = 'notlar';
@@ -157,6 +162,19 @@ class QMLS_CPT {
 				'default'           => array(),
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_modules' ),
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_EXPIRES,
+			array(
+				'type'              => 'string',
+				'description'       => __( 'Son kullanma tarihi (Y-m-d); boşsa süresiz.', 'qmls' ),
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => false,
+				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_expiry_date' ),
 			)
 		);
 

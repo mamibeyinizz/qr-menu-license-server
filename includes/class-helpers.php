@@ -131,6 +131,49 @@ class QMLS_Helpers {
 	}
 
 	/**
+	 * Son kullanma tarihini temizler.
+	 *
+	 * @param mixed $date Ham tarih değeri.
+	 * @return string Geçerli "Y-m-d" tarihi ya da süresiz için boş string.
+	 */
+	public static function sanitize_expiry_date( $date ) {
+		$date = sanitize_text_field( (string) $date );
+
+		if ( '' === $date ) {
+			return '';
+		}
+
+		$parsed = DateTime::createFromFormat( 'Y-m-d', $date );
+
+		if ( ! $parsed || $parsed->format( 'Y-m-d' ) !== $date ) {
+			return '';
+		}
+
+		return $date;
+	}
+
+	/**
+	 * Bir lisansın süresi dolmuş mu?
+	 *
+	 * Son kullanma tarihi tanımlı değilse lisans süresiz kabul edilir.
+	 * Tanımlıysa o günün sonuna kadar geçerlidir.
+	 *
+	 * @param int $license_id Lisans post ID.
+	 * @return bool Süresi dolmuş mu.
+	 */
+	public static function is_expired( $license_id ) {
+		$expires = self::sanitize_expiry_date( get_post_meta( $license_id, QMLS_CPT::META_EXPIRES, true ) );
+
+		if ( '' === $expires ) {
+			return false;
+		}
+
+		$expires_ts = strtotime( $expires . ' 23:59:59' );
+
+		return false !== $expires_ts && $expires_ts < time();
+	}
+
+	/**
 	 * Benzersiz bir API key üretir (40 karakterlik hex).
 	 *
 	 * @return string API key.
