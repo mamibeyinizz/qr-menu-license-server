@@ -447,6 +447,22 @@ class QMLS_Admin {
 				</div>
 
 				<div class="qmls-field">
+					<span class="qmls-label"><?php esc_html_e( 'Paket şablonu', 'qmls' ); ?></span>
+					<div class="qmls-tier-list">
+						<?php foreach ( QMLS_Helpers::get_tiers() as $tier ) : ?>
+							<button
+								type="button"
+								class="button qmls-tier-button"
+								data-tier-modules="<?php echo esc_attr( wp_json_encode( array_values( $tier['modules'] ) ) ); ?>"
+							>
+								<?php echo esc_html( $tier['label'] ); ?>
+							</button>
+						<?php endforeach; ?>
+					</div>
+					<p class="qmls-help"><?php esc_html_e( 'Bir pakete tıklamak aşağıdaki modül listesini doldurur; kaydetmeden önce dilediğiniz gibi değiştirebilirsiniz.', 'qmls' ); ?></p>
+				</div>
+
+				<div class="qmls-field">
 					<span class="qmls-label"><?php esc_html_e( 'Modüller', 'qmls' ); ?></span>
 					<div class="qmls-module-list">
 						<?php foreach ( $modules as $slug => $label ) : ?>

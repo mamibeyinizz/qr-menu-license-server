@@ -132,23 +132,36 @@ class QMLS_REST_API {
 	 * brute-force denemelerini ve gereksiz veritabanı yükünü sınırlamak için
 	 * IP başına kısa pencereli bir sayaç tutulur.
 	 *
+	 * @param int $retry_after Sınır aşıldıysa doldurulur: pencerenin bitmesine
+	 *                         kalan saniye (Retry-After header'ı için).
 	 * @return bool İstek sınırı aşıldıysa true.
 	 */
-	private function is_rate_limited() {
+	private function is_rate_limited( &$retry_after = 0 ) {
 		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
 
 		if ( '' === $ip ) {
 			return false;
 		}
 
-		$key   = 'qmls_rl_' . md5( $ip );
-		$count = (int) get_transient( $key );
+		$now  = time();
+		$key  = 'qmls_rl_' . md5( $ip );
+		$data = get_transient( $key );
 
-		if ( $count >= self::RATE_LIMIT_MAX ) {
+		if ( ! is_array( $data ) || ! isset( $data['count'], $data['reset'] ) || $data['reset'] <= $now ) {
+			$data = array(
+				'count' => 0,
+				'reset' => $now + self::RATE_LIMIT_WINDOW,
+			);
+		}
+
+		if ( $data['count'] >= self::RATE_LIMIT_MAX ) {
+			$retry_after = max( 1, $data['reset'] - $now );
+
 			return true;
 		}
 
-		set_transient( $key, $count + 1, self::RATE_LIMIT_WINDOW );
+		++$data['count'];
+		set_transient( $key, $data, max( 1, $data['reset'] - $now ) );
 
 		return false;
 	}
@@ -160,8 +173,13 @@ class QMLS_REST_API {
 	 * @return WP_REST_Response JSON yanıtı.
 	 */
 	public function validate( WP_REST_Request $request ) {
-		if ( $this->is_rate_limited() ) {
-			return new WP_REST_Response( array( 'status' => 'rate_limited' ), 429 );
+		$retry_after = 0;
+
+		if ( $this->is_rate_limited( $retry_after ) ) {
+			$response = new WP_REST_Response( array( 'status' => 'rate_limited' ), 429 );
+			$response->header( 'Retry-After', (string) $retry_after );
+
+			return $response;
 		}
 
 		$api_key = (string) $request->get_param( 'api_key' );

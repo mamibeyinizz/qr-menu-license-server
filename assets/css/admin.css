@@ -209,6 +209,17 @@
 	word-break: break-all;
 }
 
+/* Paket şablonu */
+.qmls-tier-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.qmls-tier-button {
+	min-height: 44px;
+}
+
 /* Modül listesi */
 .qmls-module-list {
 	display: flex;

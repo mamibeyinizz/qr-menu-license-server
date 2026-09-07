@@ -46,6 +46,53 @@ class QMLS_Helpers {
 	}
 
 	/**
+	 * Hazır paket şablonları: slug => (etiket, modül slug listesi).
+	 *
+	 * Sadece admin formunda modül checkbox'larını tek tıkla doldurmak için
+	 * kullanılır; lisans kaydında ayrı bir "paket" alanı tutulmaz, seçim
+	 * sonrası yine mevcut allowed_modules listesi kaydedilir.
+	 *
+	 * @return array<string, array{label:string, modules:string[]}> Paket slug => tanım.
+	 */
+	public static function get_tiers() {
+		$tiers = array(
+			'baslangic' => array(
+				'label'   => __( 'Başlangıç', 'qmls' ),
+				'modules' => array(
+					'restoran-menu',
+					'qr-masa',
+					'yorum-feedback',
+				),
+			),
+			'pro'       => array(
+				'label'   => __( 'Pro', 'qmls' ),
+				'modules' => array(
+					'restoran-menu',
+					'qr-masa',
+					'yorum-feedback',
+					'qr-analiz',
+					'qr-galeri',
+					'qr-ceviri',
+					'qr-calisma-saatleri',
+					'qr-acilis-ekrani',
+					'header-footer-builder',
+				),
+			),
+			'kurumsal'  => array(
+				'label'   => __( 'Kurumsal', 'qmls' ),
+				'modules' => self::get_module_slugs(),
+			),
+		);
+
+		/**
+		 * Paket şablonlarını filtreler.
+		 *
+		 * @param array<string, array{label:string, modules:string[]}> $tiers Paket slug => tanım.
+		 */
+		return apply_filters( 'qmls_tiers', $tiers );
+	}
+
+	/**
 	 * Geçerli modül slug'larını döndürür.
 	 *
 	 * @return string[] Modül slug listesi.
