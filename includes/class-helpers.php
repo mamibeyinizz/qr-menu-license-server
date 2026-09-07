@@ -46,16 +46,21 @@ class QMLS_Helpers {
 	}
 
 	/**
-	 * Hazır paket şablonları: slug => (etiket, modül slug listesi).
+	 * Paket şablonlarının kaydedildiği option anahtarı.
+	 */
+	const OPTION_TIERS = 'qmls_tiers';
+
+	/**
+	 * Paket şablonlarının fabrika ayarları: slug => (etiket, modül slug listesi).
 	 *
-	 * Sadece admin formunda modül checkbox'larını tek tıkla doldurmak için
-	 * kullanılır; lisans kaydında ayrı bir "paket" alanı tutulmaz, seçim
-	 * sonrası yine mevcut allowed_modules listesi kaydedilir.
+	 * Sadece admin hiç özelleştirme yapmadıysa ya da bir paketi sıfırlarsa
+	 * kullanılır; slug'lar sabittir, "Paketler" ekranından yalnızca etiket ve
+	 * modül içeriği değiştirilebilir.
 	 *
 	 * @return array<string, array{label:string, modules:string[]}> Paket slug => tanım.
 	 */
-	public static function get_tiers() {
-		$tiers = array(
+	public static function get_default_tiers() {
+		return array(
 			'baslangic' => array(
 				'label'   => __( 'Başlangıç', 'qmls' ),
 				'modules' => array(
@@ -83,6 +88,38 @@ class QMLS_Helpers {
 				'modules' => self::get_module_slugs(),
 			),
 		);
+	}
+
+	/**
+	 * Hazır paket şablonları: slug => (etiket, modül slug listesi).
+	 *
+	 * "Paketler" ekranından kaydedilen özelleştirmeler fabrika ayarlarının
+	 * üzerine yazılır; hiç özelleştirme yoksa fabrika ayarları döner.
+	 * Admin formunda modül checkbox'larını tek tıkla doldurmak için
+	 * kullanılır; lisans kaydında ayrı bir "paket" alanı tutulmaz, seçim
+	 * sonrası yine mevcut allowed_modules listesi kaydedilir.
+	 *
+	 * @return array<string, array{label:string, modules:string[]}> Paket slug => tanım.
+	 */
+	public static function get_tiers() {
+		$tiers = self::get_default_tiers();
+		$saved = get_option( self::OPTION_TIERS, array() );
+
+		if ( is_array( $saved ) ) {
+			foreach ( $tiers as $slug => $default ) {
+				if ( ! isset( $saved[ $slug ] ) || ! is_array( $saved[ $slug ] ) ) {
+					continue;
+				}
+
+				if ( ! empty( $saved[ $slug ]['label'] ) ) {
+					$tiers[ $slug ]['label'] = sanitize_text_field( (string) $saved[ $slug ]['label'] );
+				}
+
+				if ( isset( $saved[ $slug ]['modules'] ) ) {
+					$tiers[ $slug ]['modules'] = self::sanitize_modules( $saved[ $slug ]['modules'] );
+				}
+			}
+		}
 
 		/**
 		 * Paket şablonlarını filtreler.
@@ -90,6 +127,32 @@ class QMLS_Helpers {
 		 * @param array<string, array{label:string, modules:string[]}> $tiers Paket slug => tanım.
 		 */
 		return apply_filters( 'qmls_tiers', $tiers );
+	}
+
+	/**
+	 * Paket şablonu özelleştirmelerini kaydeder.
+	 *
+	 * Slug'lar sabittir (get_default_tiers() ile aynı küme); gelen veri bu
+	 * slug'lara indirgenir, tanınmayan slug'lar yok sayılır.
+	 *
+	 * @param array<string, array{label?:string, modules?:mixed}> $tiers Ham paket verisi.
+	 * @return void
+	 */
+	public static function save_tiers( $tiers ) {
+		$tiers = is_array( $tiers ) ? $tiers : array();
+		$clean = array();
+
+		foreach ( self::get_default_tiers() as $slug => $default ) {
+			$label   = isset( $tiers[ $slug ]['label'] ) ? sanitize_text_field( (string) $tiers[ $slug ]['label'] ) : '';
+			$modules = isset( $tiers[ $slug ]['modules'] ) ? self::sanitize_modules( $tiers[ $slug ]['modules'] ) : array();
+
+			$clean[ $slug ] = array(
+				'label'   => '' !== $label ? $label : $default['label'],
+				'modules' => $modules,
+			);
+		}
+
+		update_option( self::OPTION_TIERS, $clean );
 	}
 
 	/**
@@ -131,12 +194,12 @@ class QMLS_Helpers {
 	}
 
 	/**
-	 * Son kullanma tarihini temizler.
+	 * Bir tarih değerini temizler (son kullanma ve başlangıç tarihi için ortak).
 	 *
 	 * @param mixed $date Ham tarih değeri.
-	 * @return string Geçerli "Y-m-d" tarihi ya da süresiz için boş string.
+	 * @return string Geçerli "Y-m-d" tarihi ya da boş string.
 	 */
-	public static function sanitize_expiry_date( $date ) {
+	public static function sanitize_date( $date ) {
 		$date = sanitize_text_field( (string) $date );
 
 		if ( '' === $date ) {
@@ -162,7 +225,7 @@ class QMLS_Helpers {
 	 * @return bool Süresi dolmuş mu.
 	 */
 	public static function is_expired( $license_id ) {
-		$expires = self::sanitize_expiry_date( get_post_meta( $license_id, QMLS_CPT::META_EXPIRES, true ) );
+		$expires = self::sanitize_date( get_post_meta( $license_id, QMLS_CPT::META_EXPIRES, true ) );
 
 		if ( '' === $expires ) {
 			return false;
@@ -171,6 +234,54 @@ class QMLS_Helpers {
 		$expires_ts = strtotime( $expires . ' 23:59:59' );
 
 		return false !== $expires_ts && $expires_ts < time();
+	}
+
+	/**
+	 * Bir lisansın süresi yakında (varsayılan 7 gün içinde) mi doluyor?
+	 *
+	 * Süresi zaten dolmuş ya da süresiz lisanslar için false döner; sadece
+	 * "henüz aktif ama yakında dolacak" durumunu yakalar.
+	 *
+	 * @param int $license_id Lisans post ID.
+	 * @param int $days       Eşik gün sayısı.
+	 * @return bool Yakında dolacak mı.
+	 */
+	public static function is_expiring_soon( $license_id, $days = 7 ) {
+		$expires = self::sanitize_date( get_post_meta( $license_id, QMLS_CPT::META_EXPIRES, true ) );
+
+		if ( '' === $expires ) {
+			return false;
+		}
+
+		$expires_ts = strtotime( $expires . ' 23:59:59' );
+
+		if ( false === $expires_ts || $expires_ts < time() ) {
+			return false;
+		}
+
+		return $expires_ts <= time() + ( $days * DAY_IN_SECONDS );
+	}
+
+	/**
+	 * Son kullanma tarihine kalan tam gün sayısı.
+	 *
+	 * @param int $license_id Lisans post ID.
+	 * @return int|null Süresiz ya da tarih geçersizse null; aksi halde gün sayısı (negatifse süre dolmuş).
+	 */
+	public static function get_days_until_expiry( $license_id ) {
+		$expires = self::sanitize_date( get_post_meta( $license_id, QMLS_CPT::META_EXPIRES, true ) );
+
+		if ( '' === $expires ) {
+			return null;
+		}
+
+		$expires_ts = strtotime( $expires . ' 23:59:59' );
+
+		if ( false === $expires_ts ) {
+			return null;
+		}
+
+		return (int) ceil( ( $expires_ts - time() ) / DAY_IN_SECONDS );
 	}
 
 	/**

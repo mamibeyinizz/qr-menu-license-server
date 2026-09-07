@@ -51,6 +51,47 @@
 	border-color: #b32d2e;
 }
 
+/* İstatistik özeti */
+.qmls-stats-bar {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.qmls-stat-tile {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-left: 4px solid #c3c4c7;
+	border-radius: 6px;
+	padding: 10px 12px;
+}
+
+.qmls-stat-value {
+	display: block;
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.qmls-stat-label {
+	display: block;
+	font-size: 12px;
+	color: #50575e;
+}
+
+.qmls-stat-tile.qmls-stat-active {
+	border-left-color: #00845c;
+}
+
+.qmls-stat-tile.qmls-stat-warning {
+	border-left-color: #b45f06;
+}
+
+.qmls-stat-tile.qmls-stat-danger {
+	border-left-color: #b32d2e;
+}
+
 /* Liste ekranı kartları */
 .qmls-card-list {
 	display: flex;
@@ -124,6 +165,10 @@
 
 .qmls-badge-inactive {
 	background: #8c8f94;
+}
+
+.qmls-badge-warning {
+	background: #b45f06;
 }
 
 .qmls-empty {
@@ -218,6 +263,18 @@
 
 .qmls-tier-button {
 	min-height: 44px;
+}
+
+/* Paketler ekranı: her paket için ayrı düzenleme bloğu */
+.qmls-tier-editor {
+	margin-bottom: 28px;
+	padding-bottom: 24px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.qmls-tier-editor:last-of-type {
+	border-bottom: 0;
+	padding-bottom: 0;
 }
 
 /* Modül listesi */

@@ -1,12 +1,22 @@
 <?php
 /**
- * Plugin Name: QMLS Teşhis Aracı
- * Description: QR Menu License Server'ın sunucuda gerçekten yüklenip yüklenmediğini ve REST endpoint'inin durumunu raporlar. Plugin'den bağımsız çalışır.
- * Version: 1.0.0
+ * QMLS Teşhis Aracı — QR Menu License Server'dan bağımsız tanı betiği.
+ *
+ * ÖNEMLİ: Bu dosya kasıtlı olarak bir WordPress "Plugin Name" başlığı
+ * TAŞIMAZ. Ana plugin ile aynı pakette (tools/ altında) böyle bir başlık
+ * taşırsa, WordPress'in "yükle → hemen etkinleştir" akışı hangi dosyayı
+ * etkinleştireceğini dosya sistemi sıralamasına göre YANLIŞ tahmin
+ * edebiliyor (bazı sunucularda "Eklentinin geçerli bir üst bilgi bölümü
+ * yok" hatasıyla sonuçlanır); listeden elle etkinleştirmek her zaman
+ * çalışır çünkü o zaman tek aday dosya kalır. Bu dosyanın kendi başına bir
+ * mu-plugin olarak çalışması için "Plugin Name" satırı KULLANICI TARAFINDAN
+ * mu-plugins'e kopyalandıktan sonra elle eklenmelidir; ana plugin paketinin
+ * içinde asla bulunmamalıdır.
  *
  * KULLANIM
  * --------
- * Bu dosyayı sunucuda şu klasöre kopyalayın:
+ * Bu dosyayı sunucuda şu klasöre kopyalayın ve en üste
+ * "Plugin Name: QMLS Teşhis Aracı" satırını kendiniz ekleyin:
  *
  *     wp-content/mu-plugins/qmls-diagnostic.php
  *

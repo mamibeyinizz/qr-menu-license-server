@@ -23,6 +23,11 @@ class QMLS_Admin {
 	const PAGE_EDIT = 'qmls-license-edit';
 
 	/**
+	 * Paket şablonları ekranı sayfa slug'ı.
+	 */
+	const PAGE_TIERS = 'qmls-tiers';
+
+	/**
 	 * Gerekli yetki.
 	 */
 	const CAPABILITY = 'manage_options';
@@ -50,6 +55,7 @@ class QMLS_Admin {
 		add_action( 'admin_post_qmls_regenerate_key', array( $this, 'handle_regenerate_key' ) );
 		add_action( 'admin_post_qmls_delete_license', array( $this, 'handle_delete' ) );
 		add_action( 'admin_post_qmls_export_csv', array( $this, 'handle_export_csv' ) );
+		add_action( 'admin_post_qmls_save_tiers', array( $this, 'handle_save_tiers' ) );
 	}
 
 	/**
@@ -84,6 +90,15 @@ class QMLS_Admin {
 			self::CAPABILITY,
 			self::PAGE_EDIT,
 			array( $this, 'render_edit_page' )
+		);
+
+		add_submenu_page(
+			self::PAGE_LIST,
+			__( 'Paketler', 'qmls' ),
+			__( 'Paketler', 'qmls' ),
+			self::CAPABILITY,
+			self::PAGE_TIERS,
+			array( $this, 'render_tiers_page' )
 		);
 	}
 
@@ -136,7 +151,8 @@ class QMLS_Admin {
 	private function is_plugin_screen( $hook_suffix ) {
 		return (
 			false !== strpos( $hook_suffix, self::PAGE_LIST ) ||
-			false !== strpos( $hook_suffix, self::PAGE_EDIT )
+			false !== strpos( $hook_suffix, self::PAGE_EDIT ) ||
+			false !== strpos( $hook_suffix, self::PAGE_TIERS )
 		);
 	}
 
@@ -168,6 +184,19 @@ class QMLS_Admin {
 		}
 
 		return add_query_arg( array_merge( $query, $args ), admin_url( 'admin.php' ) );
+	}
+
+	/**
+	 * Paketler ekranının URL'ini üretir.
+	 *
+	 * @param array<string, string|int> $args Ek query argümanları.
+	 * @return string URL.
+	 */
+	public static function get_tiers_url( $args = array() ) {
+		return add_query_arg(
+			array_merge( array( 'page' => self::PAGE_TIERS ), $args ),
+			admin_url( 'admin.php' )
+		);
 	}
 
 	/**
@@ -322,6 +351,56 @@ class QMLS_Admin {
 		$total_modules = count( QMLS_Helpers::get_module_slugs() );
 		$notice        = isset( $_GET['qmls_notice'] ) ? sanitize_key( wp_unslash( $_GET['qmls_notice'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Sadece bilgilendirme mesajı.
 		$selftest      = $this->maybe_run_selftest();
+
+		$stats = array(
+			'total'         => count( $licenses ),
+			'active'        => 0,
+			'inactive'      => 0,
+			'expiring_soon' => 0,
+			'expired'       => 0,
+		);
+
+		// Kart döngüsünde tekrar hesaplamamak için burada bir kez çıkarılır.
+		$expired_map = array();
+		$soon_map    = array();
+
+		foreach ( $licenses as $license ) {
+			$status = QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) );
+
+			if ( QMLS_CPT::STATUS_ACTIVE === $status ) {
+				++$stats['active'];
+			} else {
+				++$stats['inactive'];
+			}
+
+			$expired_map[ $license->ID ] = QMLS_Helpers::is_expired( $license->ID );
+			$soon_map[ $license->ID ]    = ! $expired_map[ $license->ID ] && QMLS_Helpers::is_expiring_soon( $license->ID );
+
+			if ( $expired_map[ $license->ID ] ) {
+				++$stats['expired'];
+			} elseif ( $soon_map[ $license->ID ] ) {
+				++$stats['expiring_soon'];
+			}
+		}
+
+		// İlgi gerektirenler (süresi dolmuş, sonra yakında dolacak) listenin başına alınır.
+		usort(
+			$licenses,
+			static function ( $a, $b ) use ( $expired_map, $soon_map ) {
+				$rank = static function ( $license ) use ( $expired_map, $soon_map ) {
+					if ( $expired_map[ $license->ID ] ) {
+						return 0;
+					}
+
+					return $soon_map[ $license->ID ] ? 1 : 2;
+				};
+
+				$rank_a = $rank( $a );
+				$rank_b = $rank( $b );
+
+				return $rank_a !== $rank_b ? $rank_a <=> $rank_b : strcasecmp( $a->post_title, $b->post_title );
+			}
+		);
 		?>
 		<div class="wrap qmls-wrap">
 			<h1 class="qmls-page-title"><?php esc_html_e( 'QR Lisanslar', 'qmls' ); ?></h1>
@@ -330,10 +409,35 @@ class QMLS_Admin {
 				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Lisans çöpe taşındı.', 'qmls' ); ?></p></div>
 			<?php endif; ?>
 
+			<?php if ( ! empty( $licenses ) ) : ?>
+				<div class="qmls-stats-bar">
+					<div class="qmls-stat-tile">
+						<span class="qmls-stat-value"><?php echo (int) $stats['total']; ?></span>
+						<span class="qmls-stat-label"><?php esc_html_e( 'Toplam', 'qmls' ); ?></span>
+					</div>
+					<div class="qmls-stat-tile qmls-stat-active">
+						<span class="qmls-stat-value"><?php echo (int) $stats['active']; ?></span>
+						<span class="qmls-stat-label"><?php esc_html_e( 'Aktif', 'qmls' ); ?></span>
+					</div>
+					<div class="qmls-stat-tile qmls-stat-warning">
+						<span class="qmls-stat-value"><?php echo (int) $stats['expiring_soon']; ?></span>
+						<span class="qmls-stat-label"><?php esc_html_e( 'Yakında Dolacak (7 gün)', 'qmls' ); ?></span>
+					</div>
+					<div class="qmls-stat-tile qmls-stat-danger">
+						<span class="qmls-stat-value"><?php echo (int) $stats['expired']; ?></span>
+						<span class="qmls-stat-label"><?php esc_html_e( 'Süresi Dolmuş', 'qmls' ); ?></span>
+					</div>
+				</div>
+			<?php endif; ?>
+
 			<?php $this->render_rest_status_card( $selftest ); ?>
 
 			<a class="button button-primary qmls-button-block" href="<?php echo esc_url( self::get_edit_url() ); ?>">
 				<?php esc_html_e( '+ Yeni Lisans Ekle', 'qmls' ); ?>
+			</a>
+
+			<a class="button qmls-button-block" href="<?php echo esc_url( self::get_tiers_url() ); ?>">
+				<?php esc_html_e( 'Paketleri Düzenle', 'qmls' ); ?>
 			</a>
 
 			<?php if ( ! empty( $licenses ) ) : ?>
@@ -353,12 +457,15 @@ class QMLS_Admin {
 				<div class="qmls-card-list">
 					<?php
 					foreach ( $licenses as $license ) :
-						$status  = get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true );
-						$status  = QMLS_CPT::sanitize_status( $status );
-						$domain  = (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true );
-						$modules = QMLS_Helpers::get_license_modules( $license->ID );
-						$is_on   = QMLS_CPT::STATUS_ACTIVE === $status;
-						$expired = QMLS_Helpers::is_expired( $license->ID );
+						$status      = get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true );
+						$status      = QMLS_CPT::sanitize_status( $status );
+						$domain      = (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true );
+						$modules     = QMLS_Helpers::get_license_modules( $license->ID );
+						$is_on       = QMLS_CPT::STATUS_ACTIVE === $status;
+						$amount_paid = (string) get_post_meta( $license->ID, QMLS_CPT::META_AMOUNT_PAID, true );
+
+						$expired = $expired_map[ $license->ID ];
+						$soon    = $soon_map[ $license->ID ];
 
 						$last_seen = (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true );
 						?>
@@ -366,6 +473,16 @@ class QMLS_Admin {
 							<span class="qmls-card-title"><?php echo esc_html( get_the_title( $license ) ); ?></span>
 							<?php if ( $expired ) : ?>
 								<span class="qmls-badge qmls-badge-inactive"><?php esc_html_e( 'Süresi doldu', 'qmls' ); ?></span>
+							<?php elseif ( $soon ) : ?>
+								<span class="qmls-badge qmls-badge-warning">
+									<?php
+									printf(
+										/* translators: %d: kalan gün sayısı */
+										esc_html__( '%d gün kaldı', 'qmls' ),
+										max( 0, (int) QMLS_Helpers::get_days_until_expiry( $license->ID ) )
+									);
+									?>
+								</span>
 							<?php else : ?>
 								<span class="qmls-badge <?php echo $is_on ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
 									<?php echo $is_on ? esc_html__( 'Aktif', 'qmls' ) : esc_html__( 'Pasif', 'qmls' ); ?>
@@ -387,6 +504,17 @@ class QMLS_Admin {
 									);
 									?>
 								</span>
+								<?php if ( '' !== $amount_paid ) : ?>
+									<span class="qmls-card-amount">
+										<?php
+										printf(
+											/* translators: %s: alınan ücret, ör. "1500 TL/yıl" */
+											esc_html__( 'Ücret: %s', 'qmls' ),
+											esc_html( $amount_paid )
+										);
+										?>
+									</span>
+								<?php endif; ?>
 								<span class="qmls-card-lastseen qmls-muted">
 									<?php
 									if ( $last_seen > 0 ) {
@@ -430,16 +558,18 @@ class QMLS_Admin {
 			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
 		}
 
-		$title    = $license ? $license->post_title : '';
-		$api_key  = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_API_KEY, true ) : '';
-		$domain   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) : '';
-		$status   = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
-		$notes    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
-		$expires   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
+		$title          = $license ? $license->post_title : '';
+		$api_key        = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_API_KEY, true ) : '';
+		$domain         = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) : '';
+		$status         = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
+		$notes          = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
+		$expires        = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
+		$start_date     = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_START_DATE, true ) : '';
+		$amount_paid    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_AMOUNT_PAID, true ) : '';
 		$last_seen      = $license ? (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true ) : 0;
 		$client_version = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true ) : '';
-		$selected = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
-		$modules  = QMLS_Helpers::get_modules();
+		$selected       = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
+		$modules        = QMLS_Helpers::get_modules();
 		?>
 		<div class="wrap qmls-wrap qmls-form-wrap">
 			<h1 class="qmls-page-title">
@@ -540,6 +670,17 @@ class QMLS_Admin {
 				</div>
 
 				<div class="qmls-field">
+					<label class="qmls-label" for="qmls-start-date"><?php esc_html_e( 'Başlangıç tarihi (opsiyonel)', 'qmls' ); ?></label>
+					<input
+						type="date"
+						id="qmls-start-date"
+						name="start_date"
+						class="qmls-input"
+						value="<?php echo esc_attr( $start_date ); ?>"
+					/>
+				</div>
+
+				<div class="qmls-field">
 					<label class="qmls-label" for="qmls-expires"><?php esc_html_e( 'Son kullanma tarihi (opsiyonel)', 'qmls' ); ?></label>
 					<input
 						type="date"
@@ -549,6 +690,18 @@ class QMLS_Admin {
 						value="<?php echo esc_attr( $expires ); ?>"
 					/>
 					<p class="qmls-help"><?php esc_html_e( 'Boş bırakılırsa lisansın süresi dolmaz.', 'qmls' ); ?></p>
+				</div>
+
+				<div class="qmls-field">
+					<label class="qmls-label" for="qmls-amount-paid"><?php esc_html_e( 'Alınan ücret (opsiyonel)', 'qmls' ); ?></label>
+					<input
+						type="text"
+						id="qmls-amount-paid"
+						name="amount_paid"
+						class="qmls-input"
+						value="<?php echo esc_attr( $amount_paid ); ?>"
+						placeholder="<?php esc_attr_e( 'Örn. 1500 TL/yıl', 'qmls' ); ?>"
+					/>
 				</div>
 
 				<div class="qmls-field">
@@ -671,6 +824,87 @@ class QMLS_Admin {
 	}
 
 	/**
+	 * Paket şablonlarını düzenleme formunu basar.
+	 *
+	 * @return void
+	 */
+	public function render_tiers_page() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu sayfayı görüntüleme yetkiniz yok.', 'qmls' ) );
+		}
+
+		$notice = isset( $_GET['qmls_notice'] ) ? sanitize_key( wp_unslash( $_GET['qmls_notice'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Sadece bilgilendirme mesajı.
+
+		$tiers   = QMLS_Helpers::get_tiers();
+		$modules = QMLS_Helpers::get_modules();
+		?>
+		<div class="wrap qmls-wrap qmls-form-wrap">
+			<h1 class="qmls-page-title"><?php esc_html_e( 'Paketler', 'qmls' ); ?></h1>
+
+			<a class="qmls-back-link" href="<?php echo esc_url( self::get_list_url() ); ?>">
+				<?php esc_html_e( '← Tüm lisanslar', 'qmls' ); ?>
+			</a>
+
+			<?php if ( 'saved' === $notice ) : ?>
+				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Paketler kaydedildi.', 'qmls' ); ?></p></div>
+			<?php endif; ?>
+
+			<p class="qmls-help">
+				<?php esc_html_e( 'Buradaki modül listeleri, lisans formunda paket butonlarına tıklandığında doldurulan içeriktir. Mevcut lisansları geriye dönük etkilemez; sadece yeni seçim için şablon görevi görür.', 'qmls' ); ?>
+			</p>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-form">
+				<input type="hidden" name="action" value="qmls_save_tiers" />
+				<?php wp_nonce_field( 'qmls_save_tiers', 'qmls_nonce' ); ?>
+
+				<?php foreach ( $tiers as $slug => $tier ) : ?>
+					<div class="qmls-tier-editor">
+						<div class="qmls-field">
+							<label class="qmls-label" for="qmls-tier-label-<?php echo esc_attr( $slug ); ?>">
+								<?php esc_html_e( 'Paket adı', 'qmls' ); ?>
+							</label>
+							<input
+								type="text"
+								id="qmls-tier-label-<?php echo esc_attr( $slug ); ?>"
+								name="tiers[<?php echo esc_attr( $slug ); ?>][label]"
+								class="qmls-input"
+								value="<?php echo esc_attr( $tier['label'] ); ?>"
+							/>
+						</div>
+
+						<div class="qmls-field">
+							<span class="qmls-label"><?php esc_html_e( 'Modüller', 'qmls' ); ?></span>
+							<div class="qmls-module-list">
+								<?php foreach ( $modules as $module_slug => $module_label ) : ?>
+									<label class="qmls-module-item">
+										<input
+											type="checkbox"
+											name="tiers[<?php echo esc_attr( $slug ); ?>][modules][]"
+											value="<?php echo esc_attr( $module_slug ); ?>"
+											<?php checked( in_array( $module_slug, $tier['modules'], true ) ); ?>
+										/>
+										<span class="qmls-module-label">
+											<span class="qmls-module-name"><?php echo esc_html( $module_label ); ?></span>
+											<span class="qmls-module-slug"><?php echo esc_html( $module_slug ); ?></span>
+										</span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+						</div>
+					</div>
+				<?php endforeach; ?>
+
+				<div class="qmls-sticky-bar">
+					<button type="submit" class="button button-primary qmls-button-block qmls-save-button">
+						<?php esc_html_e( 'Paketleri Kaydet', 'qmls' ); ?>
+					</button>
+				</div>
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
 	 * Lisans kaydetme isteğini işler.
 	 *
 	 * @return void
@@ -687,12 +921,14 @@ class QMLS_Admin {
 			exit;
 		}
 
-		$modules = isset( $_POST['allowed_modules'] ) ? (array) wp_unslash( $_POST['allowed_modules'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_modules içinde temizleniyor.
-		$modules = QMLS_Helpers::sanitize_modules( $modules );
-		$status  = isset( $_POST['durum'] ) ? QMLS_CPT::STATUS_ACTIVE : QMLS_CPT::STATUS_INACTIVE;
-		$notes   = isset( $_POST['notlar'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notlar'] ) ) : '';
-		$expires = isset( $_POST['expires_at'] ) ? QMLS_Helpers::sanitize_expiry_date( wp_unslash( $_POST['expires_at'] ) ) : '';
-		$is_new  = 0 === $license_id;
+		$modules     = isset( $_POST['allowed_modules'] ) ? (array) wp_unslash( $_POST['allowed_modules'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_modules içinde temizleniyor.
+		$modules     = QMLS_Helpers::sanitize_modules( $modules );
+		$status      = isset( $_POST['durum'] ) ? QMLS_CPT::STATUS_ACTIVE : QMLS_CPT::STATUS_INACTIVE;
+		$notes       = isset( $_POST['notlar'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notlar'] ) ) : '';
+		$expires     = isset( $_POST['expires_at'] ) ? QMLS_Helpers::sanitize_date( wp_unslash( $_POST['expires_at'] ) ) : '';
+		$start_date  = isset( $_POST['start_date'] ) ? QMLS_Helpers::sanitize_date( wp_unslash( $_POST['start_date'] ) ) : '';
+		$amount_paid = isset( $_POST['amount_paid'] ) ? sanitize_text_field( wp_unslash( $_POST['amount_paid'] ) ) : '';
+		$is_new      = 0 === $license_id;
 
 		if ( $license_id > 0 ) {
 			$license = get_post( $license_id );
@@ -729,6 +965,8 @@ class QMLS_Admin {
 		update_post_meta( $license_id, QMLS_CPT::META_STATUS, $status );
 		update_post_meta( $license_id, QMLS_CPT::META_NOTES, $notes );
 		update_post_meta( $license_id, QMLS_CPT::META_EXPIRES, $expires );
+		update_post_meta( $license_id, QMLS_CPT::META_START_DATE, $start_date );
+		update_post_meta( $license_id, QMLS_CPT::META_AMOUNT_PAID, $amount_paid );
 
 		QMLS_Helpers::add_audit_entry(
 			$license_id,
@@ -839,7 +1077,9 @@ class QMLS_Admin {
 				__( 'Domain', 'qmls' ),
 				__( 'Durum', 'qmls' ),
 				__( 'Modüller', 'qmls' ),
+				__( 'Başlangıç tarihi', 'qmls' ),
 				__( 'Son kullanma tarihi', 'qmls' ),
+				__( 'Alınan ücret', 'qmls' ),
 				__( 'Son görülme', 'qmls' ),
 				__( 'İstemci sürümü', 'qmls' ),
 				__( 'Notlar', 'qmls' ),
@@ -858,7 +1098,9 @@ class QMLS_Admin {
 					(string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ),
 					QMLS_CPT::STATUS_ACTIVE === $status ? __( 'Aktif', 'qmls' ) : __( 'Pasif', 'qmls' ),
 					implode( ', ', QMLS_Helpers::get_license_modules( $license->ID ) ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_START_DATE, true ),
 					(string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_AMOUNT_PAID, true ),
 					$last_seen > 0 ? wp_date( 'Y-m-d H:i', $last_seen ) : '',
 					(string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true ),
 					(string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ),
@@ -867,6 +1109,26 @@ class QMLS_Admin {
 		}
 
 		fclose( $output );
+		exit;
+	}
+
+	/**
+	 * Paket şablonu düzenlemelerini kaydeder.
+	 *
+	 * @return void
+	 */
+	public function handle_save_tiers() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'qmls' ) );
+		}
+
+		check_admin_referer( 'qmls_save_tiers', 'qmls_nonce' );
+
+		$tiers = isset( $_POST['tiers'] ) ? (array) wp_unslash( $_POST['tiers'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- QMLS_Helpers::save_tiers() içinde temizleniyor.
+
+		QMLS_Helpers::save_tiers( $tiers );
+
+		wp_safe_redirect( self::get_tiers_url( array( 'qmls_notice' => 'saved' ) ) );
 		exit;
 	}
 

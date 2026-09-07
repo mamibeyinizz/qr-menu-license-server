@@ -43,6 +43,16 @@ class QMLS_CPT {
 	const META_EXPIRES = 'expires_at';
 
 	/**
+	 * Başlangıç tarihi meta anahtarı ("Y-m-d"; opsiyonel).
+	 */
+	const META_START_DATE = 'start_date';
+
+	/**
+	 * Alınan ücret meta anahtarı (serbest metin, ör. "1500 TL/yıl").
+	 */
+	const META_AMOUNT_PAID = 'amount_paid';
+
+	/**
 	 * Notlar meta anahtarı.
 	 */
 	const META_NOTES = 'notlar';
@@ -194,7 +204,33 @@ class QMLS_CPT {
 				'single'            => true,
 				'default'           => '',
 				'show_in_rest'      => false,
-				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_expiry_date' ),
+				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_date' ),
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_START_DATE,
+			array(
+				'type'              => 'string',
+				'description'       => __( 'Lisansın başlangıç tarihi (Y-m-d); opsiyonel.', 'qmls' ),
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => false,
+				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_date' ),
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_AMOUNT_PAID,
+			array(
+				'type'              => 'string',
+				'description'       => __( 'Alınan ücret (serbest metin, ör. "1500 TL/yıl").', 'qmls' ),
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => false,
+				'sanitize_callback' => 'sanitize_text_field',
 			)
 		);
 

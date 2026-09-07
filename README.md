@@ -41,7 +41,13 @@ Post type: `qmls_license` (public değil, sadece admin). Meta alanları:
 | `domain` | string | İlk başarılı doğrulamada otomatik yazılır (domain-lock) |
 | `durum` | string | `aktif` veya `pasif` |
 | `allowed_modules` | array | Seçili modül slug'ları |
+| `expires_at` | string | Son kullanma tarihi (`Y-m-d`); boşsa süresiz |
+| `start_date` | string | Başlangıç tarihi (`Y-m-d`); opsiyonel, sadece takip amaçlı |
+| `amount_paid` | string | Alınan ücret, serbest metin (ör. "1500 TL/yıl") |
 | `notlar` | string | Sadece yönetim içindir, API cevabına **dahil edilmez** |
+| `last_seen` | integer | İstemcinin son doğrulama zamanı (unix timestamp) |
+| `client_version` | string | İstemcinin en son bildirdiği plugin sürümü |
+| `_qmls_audit_log` | array | Son 50 işlemin kaydı (oluşturma, güncelleme, domain kilidi, key yenileme, silme, sürüm değişimi) |
 
 ## Modüller
 
@@ -54,19 +60,37 @@ Mevcut modüller: `restoran-menu`, `yorum-feedback`, `qr-masa`, `qr-analiz`, `qr
 `qr-ceviri`, `qr-chatbot`, `qr-calisma-saatleri`, `qr-masa-oturum-guvenligi`,
 `qr-acilis-ekrani`, `header-footer-builder`, `qr-menu-muhendisligi`, `qr-servis-paneli`.
 
+## Paket şablonları
+
+**QR Lisanslar > Paketler** ekranından Başlangıç/Pro/Kurumsal paketlerinin adı ve
+içerdiği modüller elle düzenlenebilir (`QMLS_Helpers::get_tiers()` / `save_tiers()`,
+`qmls_tiers` option'ında saklanır). Düzenleme ekranındaki paket butonları buradaki
+güncel tanımı kullanır; bir pakete tıklamak sadece modül checkbox'larını doldurur,
+kaydetmeden önce elle değiştirilebilir. Hiç özelleştirme yapılmadıysa fabrika
+ayarları (`get_default_tiers()`) geçerlidir.
+
 ## Admin arayüzü
 
 Arayüz mobil önceliklidir: tablo yoktur, her lisans dikey bir karttır, tüm dokunma
 hedefleri en az 44px yüksekliktedir.
 
-- **QR Lisanslar** (liste): firma adı, durum rozeti, domain, "X/11 modül aktif" bilgisi.
-  Üstte tam genişlikte "+ Yeni Lisans Ekle" butonu; karta dokununca düzenleme ekranı açılır.
-- **Düzenleme ekranı**: tek sütun form — Firma Adı → Modül seçimi (11 adet, büyük satırlar)
-  → Durum toggle → Notlar. Kaydet butonu ekranın altında sabittir (sticky).
-  Kayıttan sonra API key büyük bir kutuda ve tek dokunuşluk "Kopyala" butonuyla gösterilir.
+- **QR Lisanslar** (liste): üstte toplam/aktif/yakında dolacak (7 gün)/süresi dolmuş
+  sayılarını gösteren bir özet şeridi, ardından her lisans için bir kart — firma adı,
+  durum/süre rozeti (aktif, pasif, "X gün kaldı" ya da "süresi doldu"), domain,
+  "X/13 modül aktif", varsa alınan ücret ve son görülme bilgisi. Süresi dolmuş ve
+  yakında dolacak lisanslar listenin başına alınır. "+ Yeni Lisans Ekle", "Paketleri
+  Düzenle" ve "CSV olarak dışa aktar" butonları üstte sabittir.
+- **Düzenleme ekranı**: tek sütun form — Firma Adı → paket şablonu butonları → Modül
+  seçimi → Durum toggle → Başlangıç tarihi → Son kullanma tarihi → Alınan ücret →
+  Notlar. Kaydet butonu ekranın altında sabittir (sticky). Kayıttan sonra API key
+  büyük bir kutuda ve tek dokunuşluk "Kopyala" butonuyla gösterilir. Altta "Domain
+  kilidini kaldır", "API key'i yeniden üret", "Lisansı sil" butonları ve son 50
+  işlemi listeleyen "Aktivite geçmişi" bulunur.
 - **Domain** alanı salt okunurdur: "Kayıtlı domain: X" ya da "Henüz aktifleşmedi".
   "Domain kilidini kaldır" butonu onay sorup `domain` meta'sını boşaltır; bir sonraki
   doğrulamada yeni domain kaydedilir.
+- **Paketler**: Başlangıç/Pro/Kurumsal için ayrı ayrı paket adı ve modül listesi
+  düzenlenip tek seferde kaydedilir.
 
 ## REST API
 
@@ -74,8 +98,11 @@ hedefleri en az 44px yüksekliktedir.
 POST /wp-json/qmls/v1/validate
 Content-Type: application/json
 
-{ "api_key": "…40 karakter hex…", "domain": "musteri-sitesi.com" }
+{ "api_key": "…40 karakter hex…", "domain": "musteri-sitesi.com", "version": "1.1.0" }
 ```
+
+`version` opsiyoneldir; gönderilirse `client_version` meta'sında saklanır ve
+değiştiğinde aktivite geçmişine not düşülür.
 
 Yanıtlar:
 
@@ -83,19 +110,24 @@ Yanıtlar:
 | --- | --- | --- |
 | Key bulunamadı | 404 | `{ "status": "invalid" }` |
 | Lisans pasif | 200 | `{ "status": "inactive" }` |
+| Süresi dolmuş | 200 | `{ "status": "expired", "modules": [] }` |
 | Domain uyuşmuyor | 200 | `{ "status": "domain_mismatch", "modules": [] }` |
 | Geçerli | 200 | `{ "status": "active", "modules": ["restoran-menu", …] }` |
+| Hız sınırı aşıldı | 429 | `{ "status": "rate_limited" }` (`Retry-After` header'ı ile) |
 
 Notlar:
 
 - Endpoint public'tir; nonce/auth header gerekmez, koruma api_key'in kendisidir.
-- Kayıtta domain boşsa ilk gelen domain yazılır (domain-lock) ve yanıt `active` olur.
+- IP başına dakikada 20 istekle sınırlıdır; aşımda 429 + `Retry-After` döner.
+- Kayıtta domain boşsa ilk gelen domain yazılır (domain-lock, atomik bir SQL UPDATE
+  ile yarış durumuna karşı korumalı) ve yanıt `active` olur.
 - Domain karşılaştırması normalize edilerek yapılır: protokol, `www.`, port, yol ve
   büyük/küçük harf farkları göz ardı edilir (`https://www.Site.com/menu` → `site.com`).
-- `domain_mismatch` durumunda modül listesi boş döner; plugin'i kilitleme kararı
-  müşteri tarafındaki plugin'e aittir.
-- Sorgular `WP_Query` + `meta_query` ile yapılır, ham SQL yoktur; girdiler
-  `sanitize_text_field` ile temizlenir.
+- `domain_mismatch` ve `expired` durumlarında modül listesi boş döner; plugin'i
+  kilitleme kararı müşteri tarafındaki plugin'e aittir.
+- Sorgular `WP_Query` + `meta_query` ile yapılır, ham SQL yoktur (domain-lock yazımı
+  hariç — o da parametreli/prepared bir sorgudur); girdiler `sanitize_text_field`
+  ile temizlenir.
 
 ### Müşteri plugin'i tarafından örnek çağrı
 
