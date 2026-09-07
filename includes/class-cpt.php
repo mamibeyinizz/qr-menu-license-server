@@ -53,6 +53,16 @@ class QMLS_CPT {
 	const META_LAST_SEEN = 'last_seen';
 
 	/**
+	 * Aktivite/audit log meta anahtarı.
+	 *
+	 * Herhangi bir formdan doğrudan yazılmadığı, yalnızca sistem tarafından
+	 * üretildiği için register_post_meta() ile kaydedilmez (diğer META_*
+	 * alanlarının aksine); alt çizgi öneki WP'nin varsayılan meta kutusunda
+	 * gösterilmemesini sağlar.
+	 */
+	const META_AUDIT_LOG = '_qmls_audit_log';
+
+	/**
 	 * Aktif durum değeri.
 	 */
 	const STATUS_ACTIVE = 'aktif';

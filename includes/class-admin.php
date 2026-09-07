@@ -625,6 +625,32 @@ class QMLS_Admin {
 						</button>
 					</form>
 				</div>
+
+				<?php $audit_log = QMLS_Helpers::get_audit_log( $license_id ); ?>
+
+				<?php if ( ! empty( $audit_log ) ) : ?>
+					<div class="qmls-field">
+						<span class="qmls-label"><?php esc_html_e( 'Aktivite geçmişi', 'qmls' ); ?></span>
+						<div class="qmls-audit-list">
+							<?php foreach ( $audit_log as $entry ) : ?>
+								<div class="qmls-audit-item">
+									<span class="qmls-audit-time">
+										<?php echo esc_html( wp_date( 'd.m.Y H:i', (int) $entry['time'] ) ); ?>
+									</span>
+									<span class="qmls-audit-action">
+										<?php echo esc_html( QMLS_Helpers::get_audit_action_label( $entry['action'] ) ); ?>
+										<?php if ( ! empty( $entry['detail'] ) ) : ?>
+											<span class="qmls-muted"> — <?php echo esc_html( $entry['detail'] ); ?></span>
+										<?php endif; ?>
+									</span>
+									<span class="qmls-audit-user qmls-muted">
+										<?php echo esc_html( isset( $entry['user'] ) ? $entry['user'] : '' ); ?>
+									</span>
+								</div>
+							<?php endforeach; ?>
+						</div>
+					</div>
+				<?php endif; ?>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -652,6 +678,7 @@ class QMLS_Admin {
 		$status  = isset( $_POST['durum'] ) ? QMLS_CPT::STATUS_ACTIVE : QMLS_CPT::STATUS_INACTIVE;
 		$notes   = isset( $_POST['notlar'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notlar'] ) ) : '';
 		$expires = isset( $_POST['expires_at'] ) ? QMLS_Helpers::sanitize_expiry_date( wp_unslash( $_POST['expires_at'] ) ) : '';
+		$is_new  = 0 === $license_id;
 
 		if ( $license_id > 0 ) {
 			$license = get_post( $license_id );
@@ -689,6 +716,17 @@ class QMLS_Admin {
 		update_post_meta( $license_id, QMLS_CPT::META_NOTES, $notes );
 		update_post_meta( $license_id, QMLS_CPT::META_EXPIRES, $expires );
 
+		QMLS_Helpers::add_audit_entry(
+			$license_id,
+			$is_new ? 'olusturuldu' : 'guncellendi',
+			sprintf(
+				'%1$s · %2$d modül · bitiş: %3$s',
+				QMLS_CPT::STATUS_ACTIVE === $status ? __( 'aktif', 'qmls' ) : __( 'pasif', 'qmls' ),
+				count( $modules ),
+				'' !== $expires ? $expires : __( 'süresiz', 'qmls' )
+			)
+		);
+
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'saved' ) ) );
 		exit;
 	}
@@ -709,7 +747,11 @@ class QMLS_Admin {
 			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
 		}
 
+		$old_domain = (string) get_post_meta( $license_id, QMLS_CPT::META_DOMAIN, true );
+
 		update_post_meta( $license_id, QMLS_CPT::META_DOMAIN, '' );
+
+		QMLS_Helpers::add_audit_entry( $license_id, 'domain_kilidi_kaldirildi', $old_domain );
 
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'unlocked' ) ) );
 		exit;
@@ -736,6 +778,8 @@ class QMLS_Admin {
 		}
 
 		update_post_meta( $license_id, QMLS_CPT::META_API_KEY, qmls_generate_api_key() );
+
+		QMLS_Helpers::add_audit_entry( $license_id, 'api_key_yenilendi' );
 
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'regenerated' ) ) );
 		exit;
@@ -825,6 +869,8 @@ class QMLS_Admin {
 		if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
 			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
 		}
+
+		QMLS_Helpers::add_audit_entry( $license_id, 'silindi' );
 
 		wp_trash_post( $license_id );
 

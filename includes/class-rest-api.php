@@ -244,6 +244,10 @@ class QMLS_REST_API {
 			// Doğrudan $wpdb yazımı meta cache'ini güncellemez; kalıcı object cache'te bayatlamayı önle.
 			wp_cache_delete( $license->ID, 'post_meta' );
 
+			if ( $locked ) {
+				QMLS_Helpers::add_audit_entry( $license->ID, 'domain_kilitlendi', $domain );
+			}
+
 			$saved_domain = $locked
 				? $domain
 				: QMLS_Helpers::normalize_domain( get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) );

@@ -174,6 +174,88 @@ class QMLS_Helpers {
 	}
 
 	/**
+	 * Bir lisans için tutulan azami aktivite kaydı sayısı.
+	 */
+	const AUDIT_LOG_MAX = 50;
+
+	/**
+	 * Aktivite kaydı işlem kodlarının okunabilir Türkçe karşılığı.
+	 *
+	 * @return array<string, string> İşlem kodu => etiket.
+	 */
+	public static function get_audit_action_labels() {
+		return array(
+			'olusturuldu'              => __( 'Lisans oluşturuldu', 'qmls' ),
+			'guncellendi'              => __( 'Lisans güncellendi', 'qmls' ),
+			'domain_kilitlendi'        => __( 'Domain otomatik kilitlendi', 'qmls' ),
+			'domain_kilidi_kaldirildi' => __( 'Domain kilidi kaldırıldı', 'qmls' ),
+			'api_key_yenilendi'        => __( 'API key yenilendi', 'qmls' ),
+			'silindi'                  => __( 'Çöpe taşındı', 'qmls' ),
+		);
+	}
+
+	/**
+	 * Bir işlem koduna karşılık gelen okunabilir etiketi döndürür.
+	 *
+	 * @param string $action İşlem kodu.
+	 * @return string Etiket; tanınmayan kodlar olduğu gibi döner.
+	 */
+	public static function get_audit_action_label( $action ) {
+		$labels = self::get_audit_action_labels();
+
+		return isset( $labels[ $action ] ) ? $labels[ $action ] : $action;
+	}
+
+	/**
+	 * Bir lisansa aktivite kaydı ekler.
+	 *
+	 * Sadece son AUDIT_LOG_MAX kayıt tutulur; eskiler sessizce düşer.
+	 *
+	 * @param int    $license_id Lisans post ID.
+	 * @param string $action     İşlem kodu (bkz. get_audit_action_labels()).
+	 * @param string $detail     Opsiyonel kısa açıklama (ör. domain adı).
+	 * @return void
+	 */
+	public static function add_audit_entry( $license_id, $action, $detail = '' ) {
+		$log = get_post_meta( $license_id, QMLS_CPT::META_AUDIT_LOG, true );
+
+		if ( ! is_array( $log ) ) {
+			$log = array();
+		}
+
+		$user = wp_get_current_user();
+
+		$log[] = array(
+			'time'   => time(),
+			'user'   => ( $user && $user->exists() ) ? $user->user_login : __( 'sistem', 'qmls' ),
+			'action' => sanitize_text_field( $action ),
+			'detail' => sanitize_text_field( $detail ),
+		);
+
+		if ( count( $log ) > self::AUDIT_LOG_MAX ) {
+			$log = array_slice( $log, -self::AUDIT_LOG_MAX );
+		}
+
+		update_post_meta( $license_id, QMLS_CPT::META_AUDIT_LOG, $log );
+	}
+
+	/**
+	 * Bir lisansın aktivite kaydını en yeniden en eskiye döndürür.
+	 *
+	 * @param int $license_id Lisans post ID.
+	 * @return array<int, array{time:int,user:string,action:string,detail:string}> Kayıt listesi.
+	 */
+	public static function get_audit_log( $license_id ) {
+		$log = get_post_meta( $license_id, QMLS_CPT::META_AUDIT_LOG, true );
+
+		if ( ! is_array( $log ) ) {
+			return array();
+		}
+
+		return array_reverse( $log );
+	}
+
+	/**
 	 * Benzersiz bir API key üretir (40 karakterlik hex).
 	 *
 	 * @return string API key.
