@@ -33,6 +33,8 @@ class QMLS_Helpers {
 			'qr-masa-oturum-guvenligi'  => __( 'QR Masa Oturum Güvenliği', 'qmls' ),
 			'qr-acilis-ekrani'          => __( 'Açılış Ekranı', 'qmls' ),
 			'header-footer-builder'     => __( 'Header Footer Builder', 'qmls' ),
+			'qr-menu-muhendisligi'      => __( 'Menü Mühendisliği', 'qmls' ),
+			'qr-servis-paneli'          => __( 'Servis Paneli', 'qmls' ),
 		);
 
 		/**

@@ -52,7 +52,7 @@ checkbox listesi ve API doğrulaması aynı listeyi kullanır. Dışarıdan ekle
 
 Mevcut modüller: `restoran-menu`, `yorum-feedback`, `qr-masa`, `qr-analiz`, `qr-galeri`,
 `qr-ceviri`, `qr-chatbot`, `qr-calisma-saatleri`, `qr-masa-oturum-guvenligi`,
-`qr-acilis-ekrani`, `header-footer-builder`.
+`qr-acilis-ekrani`, `header-footer-builder`, `qr-menu-muhendisligi`, `qr-servis-paneli`.
 
 ## Admin arayüzü
 
