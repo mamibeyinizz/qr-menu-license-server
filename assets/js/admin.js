@@ -79,13 +79,16 @@
 	 */
 	function initConfirmButtons() {
 		var buttons = document.querySelectorAll( '.qmls-confirm' );
+		var messages = {
+			delete:     strings.confirmDelete || 'Bu kayıt silinsin mi?',
+			regenerate: strings.confirmRegenerate || 'API key yeniden üretilsin mi?',
+			unlock:     strings.confirmUnlock || 'Domain kilidi kaldırılsın mı?'
+		};
 
 		Array.prototype.forEach.call( buttons, function ( button ) {
 			button.addEventListener( 'click', function ( event ) {
 				var type = button.getAttribute( 'data-confirm' );
-				var message = 'delete' === type
-					? ( strings.confirmDelete || 'Bu kayıt silinsin mi?' )
-					: ( strings.confirmUnlock || 'Domain kilidi kaldırılsın mı?' );
+				var message = messages[ type ] || messages.unlock;
 
 				if ( ! window.confirm( message ) ) {
 					event.preventDefault();

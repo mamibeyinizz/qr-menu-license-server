@@ -47,6 +47,7 @@ class QMLS_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_qmls_save_license', array( $this, 'handle_save' ) );
 		add_action( 'admin_post_qmls_unlock_domain', array( $this, 'handle_unlock_domain' ) );
+		add_action( 'admin_post_qmls_regenerate_key', array( $this, 'handle_regenerate_key' ) );
 		add_action( 'admin_post_qmls_delete_license', array( $this, 'handle_delete' ) );
 	}
 
@@ -115,11 +116,12 @@ class QMLS_Admin {
 			'qmls-admin',
 			'qmlsAdmin',
 			array(
-				'copied'        => __( 'Kopyalandı!', 'qmls' ),
-				'copy'          => __( 'Kopyala', 'qmls' ),
-				'copyFailed'    => __( 'Kopyalanamadı, key\'i elle seçip kopyalayın.', 'qmls' ),
-				'confirmUnlock' => __( 'Domain kilidi kaldırılsın mı? Müşteri plugin\'i bir sonraki doğrulamada hangi domainde çalışıyorsa oraya kilitlenir.', 'qmls' ),
-				'confirmDelete' => __( 'Bu lisans çöpe taşınsın mı?', 'qmls' ),
+				'copied'            => __( 'Kopyalandı!', 'qmls' ),
+				'copy'              => __( 'Kopyala', 'qmls' ),
+				'copyFailed'        => __( 'Kopyalanamadı, key\'i elle seçip kopyalayın.', 'qmls' ),
+				'confirmUnlock'     => __( 'Domain kilidi kaldırılsın mı? Müşteri plugin\'i bir sonraki doğrulamada hangi domainde çalışıyorsa oraya kilitlenir.', 'qmls' ),
+				'confirmRegenerate' => __( 'API key yeniden üretilsin mi? Eski key hemen geçersiz olur; müşteri plugin\'inde yeni key\'i girmeniz gerekir.', 'qmls' ),
+				'confirmDelete'     => __( 'Bu lisans çöpe taşınsın mı?', 'qmls' ),
 			)
 		);
 	}
@@ -436,6 +438,8 @@ class QMLS_Admin {
 				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Lisans kaydedildi.', 'qmls' ); ?></p></div>
 			<?php elseif ( 'unlocked' === $notice ) : ?>
 				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Domain kilidi kaldırıldı. Bir sonraki doğrulamada yeni domain kaydedilecek.', 'qmls' ); ?></p></div>
+			<?php elseif ( 'regenerated' === $notice ) : ?>
+				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'API key yeniden üretildi. Eski key artık geçersiz; müşteri plugin\'ine yeni key\'i girmeniz gerekir.', 'qmls' ); ?></p></div>
 			<?php elseif ( 'missing_title' === $notice ) : ?>
 				<div class="notice notice-error qmls-notice"><p><?php esc_html_e( 'Firma adı zorunludur.', 'qmls' ); ?></p></div>
 			<?php endif; ?>
@@ -589,6 +593,15 @@ class QMLS_Admin {
 					<?php endif; ?>
 
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-inline-form">
+						<input type="hidden" name="action" value="qmls_regenerate_key" />
+						<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
+						<?php wp_nonce_field( 'qmls_regenerate_key_' . $license_id, 'qmls_nonce' ); ?>
+						<button type="submit" class="button qmls-button-block qmls-confirm" data-confirm="regenerate">
+							<?php esc_html_e( 'API key\'i yeniden üret', 'qmls' ); ?>
+						</button>
+					</form>
+
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-inline-form">
 						<input type="hidden" name="action" value="qmls_delete_license" />
 						<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
 						<?php wp_nonce_field( 'qmls_delete_license_' . $license_id, 'qmls_nonce' ); ?>
@@ -684,6 +697,32 @@ class QMLS_Admin {
 		update_post_meta( $license_id, QMLS_CPT::META_DOMAIN, '' );
 
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'unlocked' ) ) );
+		exit;
+	}
+
+	/**
+	 * API key'i yeniden üretir; eski key anında geçersiz olur.
+	 *
+	 * Domain kilidine dokunulmaz: aynı site için yalnızca anahtar değişir,
+	 * müşteri plugin'inde yeni key girildiğinde doğrulama kaldığı yerden
+	 * devam eder.
+	 *
+	 * @return void
+	 */
+	public function handle_regenerate_key() {
+		$license_id = isset( $_POST['license_id'] ) ? absint( wp_unslash( $_POST['license_id'] ) ) : 0;
+
+		$this->verify_request( 'qmls_regenerate_key_' . $license_id );
+
+		$license = get_post( $license_id );
+
+		if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
+			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
+		}
+
+		update_post_meta( $license_id, QMLS_CPT::META_API_KEY, qmls_generate_api_key() );
+
+		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'regenerated' ) ) );
 		exit;
 	}
 
