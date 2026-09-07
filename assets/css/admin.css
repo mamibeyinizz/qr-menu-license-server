@@ -429,6 +429,17 @@
 	word-break: break-all;
 }
 
+/*
+ * .qmls-badge normalde .qmls-card içinde köşeye sabitlenmek üzere
+ * position:absolute tanımlıyor; burada satır içinde (inline) kullanıldığı
+ * için o konumlandırma iptal edilir, aksi halde rozet "Route kaydı"
+ * satırından kopup kartın en yakın konumlanmış atasına göre görünmez yere
+ * kayar.
+ */
+.qmls-status-row .qmls-badge {
+	position: static;
+}
+
 .qmls-status-card .qmls-notice {
 	margin: 12px 0;
 }
