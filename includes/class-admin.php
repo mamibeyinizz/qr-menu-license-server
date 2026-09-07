@@ -436,7 +436,8 @@ class QMLS_Admin {
 		$status   = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
 		$notes    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
 		$expires   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
-		$last_seen = $license ? (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true ) : 0;
+		$last_seen      = $license ? (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true ) : 0;
+		$client_version = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true ) : '';
 		$selected = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
 		$modules  = QMLS_Helpers::get_modules();
 		?>
@@ -576,6 +577,19 @@ class QMLS_Admin {
 							);
 						} else {
 							esc_html_e( 'Son görülme: hiç', 'qmls' );
+						}
+						?>
+					</p>
+					<p class="qmls-help">
+						<?php
+						if ( '' !== $client_version ) {
+							printf(
+								/* translators: %s: istemcinin bildirdiği plugin sürümü */
+								esc_html__( 'İstemci sürümü: %s', 'qmls' ),
+								esc_html( $client_version )
+							);
+						} else {
+							esc_html_e( 'İstemci sürümü: bilinmiyor', 'qmls' );
 						}
 						?>
 					</p>
@@ -827,6 +841,7 @@ class QMLS_Admin {
 				__( 'Modüller', 'qmls' ),
 				__( 'Son kullanma tarihi', 'qmls' ),
 				__( 'Son görülme', 'qmls' ),
+				__( 'İstemci sürümü', 'qmls' ),
 				__( 'Notlar', 'qmls' ),
 			)
 		);
@@ -845,6 +860,7 @@ class QMLS_Admin {
 					implode( ', ', QMLS_Helpers::get_license_modules( $license->ID ) ),
 					(string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ),
 					$last_seen > 0 ? wp_date( 'Y-m-d H:i', $last_seen ) : '',
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true ),
 					(string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ),
 				)
 			);

@@ -120,6 +120,12 @@ class QMLS_REST_API {
 						'description'       => __( 'İsteği yapan sitenin domaini.', 'qmls' ),
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'version' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => __( 'İstemci plugin sürümü (opsiyonel).', 'qmls' ),
+						'sanitize_callback' => 'sanitize_text_field',
+					),
 				),
 			)
 		);
@@ -193,6 +199,21 @@ class QMLS_REST_API {
 
 		// Geçerli bir key ile gelen her istek "son görülme" zamanını günceller.
 		update_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, time() );
+
+		$version = (string) $request->get_param( 'version' );
+
+		if ( '' !== $version ) {
+			$previous_version = (string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true );
+
+			if ( $previous_version !== $version ) {
+				update_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, $version );
+				QMLS_Helpers::add_audit_entry(
+					$license->ID,
+					'surum_guncellendi',
+					'' !== $previous_version ? $previous_version . ' → ' . $version : $version
+				);
+			}
+		}
 
 		$status = QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) );
 

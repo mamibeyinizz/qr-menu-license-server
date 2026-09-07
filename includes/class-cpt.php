@@ -53,6 +53,11 @@ class QMLS_CPT {
 	const META_LAST_SEEN = 'last_seen';
 
 	/**
+	 * İstemci plugin sürümü meta anahtarı (client_version REST parametresinden).
+	 */
+	const META_CLIENT_VERSION = 'client_version';
+
+	/**
 	 * Aktivite/audit log meta anahtarı.
 	 *
 	 * Herhangi bir formdan doğrudan yazılmadığı, yalnızca sistem tarafından
@@ -216,6 +221,19 @@ class QMLS_CPT {
 				'default'           => 0,
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'absint',
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_CLIENT_VERSION,
+			array(
+				'type'              => 'string',
+				'description'       => __( 'İstemcinin en son bildirdiği plugin sürümü.', 'qmls' ),
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => false,
+				'sanitize_callback' => 'sanitize_text_field',
 			)
 		);
 	}

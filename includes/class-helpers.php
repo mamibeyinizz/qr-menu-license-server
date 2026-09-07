@@ -190,6 +190,7 @@ class QMLS_Helpers {
 			'domain_kilitlendi'        => __( 'Domain otomatik kilitlendi', 'qmls' ),
 			'domain_kilidi_kaldirildi' => __( 'Domain kilidi kaldırıldı', 'qmls' ),
 			'api_key_yenilendi'        => __( 'API key yenilendi', 'qmls' ),
+			'surum_guncellendi'        => __( 'İstemci sürümü değişti', 'qmls' ),
 			'silindi'                  => __( 'Çöpe taşındı', 'qmls' ),
 		);
 	}
