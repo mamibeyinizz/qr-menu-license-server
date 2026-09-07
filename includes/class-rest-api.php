@@ -57,13 +57,6 @@ class QMLS_REST_API {
 	}
 
 	/**
-	 * Hook'ları bağlar.
-	 */
-	public function __construct() {
-		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
-	}
-
-	/**
 	 * Doğrulama endpoint'inin tam adresi.
 	 *
 	 * @return string

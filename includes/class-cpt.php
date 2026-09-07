@@ -108,8 +108,6 @@ class QMLS_CPT {
 	 * @return void
 	 */
 	public static function register_meta() {
-		$auth_callback = array( __CLASS__, 'meta_auth_callback' );
-
 		register_post_meta(
 			self::POST_TYPE,
 			self::META_API_KEY,
@@ -120,7 +118,6 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_text_field',
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -134,7 +131,6 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_text_field',
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -148,7 +144,6 @@ class QMLS_CPT {
 				'default'           => self::STATUS_ACTIVE,
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( __CLASS__, 'sanitize_status' ),
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -162,7 +157,6 @@ class QMLS_CPT {
 				'default'           => array(),
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_modules' ),
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -176,23 +170,8 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_textarea_field',
-				'auth_callback'     => $auth_callback,
 			)
 		);
-	}
-
-	/**
-	 * Meta alanlarına yazma yetkisini kontrol eder.
-	 *
-	 * @param bool   $allowed   Mevcut izin durumu.
-	 * @param string $meta_key  Meta anahtarı.
-	 * @param int    $object_id Post ID.
-	 * @return bool Yetki var mı.
-	 */
-	public static function meta_auth_callback( $allowed, $meta_key, $object_id ) {
-		unset( $allowed, $meta_key );
-
-		return current_user_can( 'edit_post', $object_id );
 	}
 
 	/**
