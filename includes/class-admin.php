@@ -49,6 +49,7 @@ class QMLS_Admin {
 		add_action( 'admin_post_qmls_unlock_domain', array( $this, 'handle_unlock_domain' ) );
 		add_action( 'admin_post_qmls_regenerate_key', array( $this, 'handle_regenerate_key' ) );
 		add_action( 'admin_post_qmls_delete_license', array( $this, 'handle_delete' ) );
+		add_action( 'admin_post_qmls_export_csv', array( $this, 'handle_export_csv' ) );
 	}
 
 	/**
@@ -173,6 +174,11 @@ class QMLS_Admin {
 	 * Endpoint testinin nonce action adı.
 	 */
 	const NONCE_SELFTEST = 'qmls_selftest';
+
+	/**
+	 * CSV dışa aktarmanın nonce action adı.
+	 */
+	const NONCE_EXPORT = 'qmls_export_csv';
 
 	/**
 	 * Kendi endpoint'ine gerçek bir istek atarak dışarıdan erişilebilirliğini
@@ -329,6 +335,15 @@ class QMLS_Admin {
 			<a class="button button-primary qmls-button-block" href="<?php echo esc_url( self::get_edit_url() ); ?>">
 				<?php esc_html_e( '+ Yeni Lisans Ekle', 'qmls' ); ?>
 			</a>
+
+			<?php if ( ! empty( $licenses ) ) : ?>
+				<a
+					class="button qmls-button-block"
+					href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=qmls_export_csv' ), self::NONCE_EXPORT ) ); ?>"
+				>
+					<?php esc_html_e( 'CSV olarak dışa aktar', 'qmls' ); ?>
+				</a>
+			<?php endif; ?>
 
 			<?php if ( empty( $licenses ) ) : ?>
 				<div class="qmls-empty">
@@ -723,6 +738,75 @@ class QMLS_Admin {
 		update_post_meta( $license_id, QMLS_CPT::META_API_KEY, qmls_generate_api_key() );
 
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'regenerated' ) ) );
+		exit;
+	}
+
+	/**
+	 * Tüm lisansları CSV olarak indirir.
+	 *
+	 * @return void
+	 */
+	public function handle_export_csv() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'qmls' ) );
+		}
+
+		check_admin_referer( self::NONCE_EXPORT );
+
+		$licenses = get_posts(
+			array(
+				'post_type'        => QMLS_CPT::POST_TYPE,
+				'post_status'      => array( 'publish', 'draft' ),
+				'posts_per_page'   => -1,
+				'orderby'          => 'title',
+				'order'            => 'ASC',
+				'suppress_filters' => false,
+			)
+		);
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="qmls-lisanslar-' . gmdate( 'Y-m-d' ) . '.csv"' );
+
+		$output = fopen( 'php://output', 'w' );
+
+		// Excel'in UTF-8 karakterleri (ör. Türkçe) doğru göstermesi için BOM.
+		fwrite( $output, "\xEF\xBB\xBF" );
+
+		fputcsv(
+			$output,
+			array(
+				__( 'Firma Adı', 'qmls' ),
+				__( 'API Key', 'qmls' ),
+				__( 'Domain', 'qmls' ),
+				__( 'Durum', 'qmls' ),
+				__( 'Modüller', 'qmls' ),
+				__( 'Son kullanma tarihi', 'qmls' ),
+				__( 'Son görülme', 'qmls' ),
+				__( 'Notlar', 'qmls' ),
+			)
+		);
+
+		foreach ( $licenses as $license ) {
+			$status    = QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) );
+			$last_seen = (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true );
+
+			fputcsv(
+				$output,
+				array(
+					get_the_title( $license ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_API_KEY, true ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ),
+					QMLS_CPT::STATUS_ACTIVE === $status ? __( 'Aktif', 'qmls' ) : __( 'Pasif', 'qmls' ),
+					implode( ', ', QMLS_Helpers::get_license_modules( $license->ID ) ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ),
+					$last_seen > 0 ? wp_date( 'Y-m-d H:i', $last_seen ) : '',
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ),
+				)
+			);
+		}
+
+		fclose( $output );
 		exit;
 	}
 
