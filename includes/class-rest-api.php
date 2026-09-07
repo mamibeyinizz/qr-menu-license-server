@@ -23,6 +23,16 @@ class QMLS_REST_API {
 	const ROUTE_VALIDATE = '/validate';
 
 	/**
+	 * Hız sınırlama penceresi başına izin verilen istek sayısı.
+	 */
+	const RATE_LIMIT_MAX = 20;
+
+	/**
+	 * Hız sınırlama penceresi (saniye).
+	 */
+	const RATE_LIMIT_WINDOW = 60;
+
+	/**
 	 * Tekil örnek.
 	 *
 	 * @var QMLS_REST_API|null
@@ -54,13 +64,6 @@ class QMLS_REST_API {
 	 */
 	public static function init() {
 		add_action( 'rest_api_init', array( self::instance(), 'register_routes' ) );
-	}
-
-	/**
-	 * Hook'ları bağlar.
-	 */
-	public function __construct() {
-		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
 
 	/**
@@ -117,9 +120,56 @@ class QMLS_REST_API {
 						'description'       => __( 'İsteği yapan sitenin domaini.', 'qmls' ),
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'version' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'description'       => __( 'İstemci plugin sürümü (opsiyonel).', 'qmls' ),
+						'sanitize_callback' => 'sanitize_text_field',
+					),
 				),
 			)
 		);
+	}
+
+	/**
+	 * İsteği yapan istemcinin IP adresine göre hız sınırlaması uygular.
+	 *
+	 * Public ve sadece api_key ile korunan bir endpoint olduğundan, key
+	 * brute-force denemelerini ve gereksiz veritabanı yükünü sınırlamak için
+	 * IP başına kısa pencereli bir sayaç tutulur.
+	 *
+	 * @param int $retry_after Sınır aşıldıysa doldurulur: pencerenin bitmesine
+	 *                         kalan saniye (Retry-After header'ı için).
+	 * @return bool İstek sınırı aşıldıysa true.
+	 */
+	private function is_rate_limited( &$retry_after = 0 ) {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+
+		if ( '' === $ip ) {
+			return false;
+		}
+
+		$now  = time();
+		$key  = 'qmls_rl_' . md5( $ip );
+		$data = get_transient( $key );
+
+		if ( ! is_array( $data ) || ! isset( $data['count'], $data['reset'] ) || $data['reset'] <= $now ) {
+			$data = array(
+				'count' => 0,
+				'reset' => $now + self::RATE_LIMIT_WINDOW,
+			);
+		}
+
+		if ( $data['count'] >= self::RATE_LIMIT_MAX ) {
+			$retry_after = max( 1, $data['reset'] - $now );
+
+			return true;
+		}
+
+		++$data['count'];
+		set_transient( $key, $data, max( 1, $data['reset'] - $now ) );
+
+		return false;
 	}
 
 	/**
@@ -129,6 +179,15 @@ class QMLS_REST_API {
 	 * @return WP_REST_Response JSON yanıtı.
 	 */
 	public function validate( WP_REST_Request $request ) {
+		$retry_after = 0;
+
+		if ( $this->is_rate_limited( $retry_after ) ) {
+			$response = new WP_REST_Response( array( 'status' => 'rate_limited' ), 429 );
+			$response->header( 'Retry-After', (string) $retry_after );
+
+			return $response;
+		}
+
 		$api_key = (string) $request->get_param( 'api_key' );
 		$domain  = QMLS_Helpers::normalize_domain( (string) $request->get_param( 'domain' ) );
 
@@ -138,10 +197,38 @@ class QMLS_REST_API {
 			return new WP_REST_Response( array( 'status' => 'invalid' ), 404 );
 		}
 
+		// Geçerli bir key ile gelen her istek "son görülme" zamanını günceller.
+		update_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, time() );
+
+		$version = (string) $request->get_param( 'version' );
+
+		if ( '' !== $version ) {
+			$previous_version = (string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true );
+
+			if ( $previous_version !== $version ) {
+				update_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, $version );
+				QMLS_Helpers::add_audit_entry(
+					$license->ID,
+					'surum_guncellendi',
+					'' !== $previous_version ? $previous_version . ' → ' . $version : $version
+				);
+			}
+		}
+
 		$status = QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) );
 
 		if ( QMLS_CPT::STATUS_ACTIVE !== $status ) {
 			return new WP_REST_Response( array( 'status' => 'inactive' ), 200 );
+		}
+
+		if ( QMLS_Helpers::is_expired( $license->ID ) ) {
+			return new WP_REST_Response(
+				array(
+					'status'  => 'expired',
+					'modules' => array(),
+				),
+				200
+			);
 		}
 
 		$saved_domain = QMLS_Helpers::normalize_domain( get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) );
@@ -158,8 +245,33 @@ class QMLS_REST_API {
 				);
 			}
 
-			update_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, $domain );
-			$saved_domain = $domain;
+			/*
+			 * İlk aktivasyon yazımı atomik yapılır: aynı anda gelen yarışan
+			 * isteklerden yalnızca meta değeri hâlâ boşken yazan kazanır.
+			 * update_post_meta() bunu garanti etmez (oku-sonra-yaz), bu yüzden
+			 * doğrudan koşullu bir UPDATE kullanılır.
+			 */
+			global $wpdb;
+
+			$locked = (bool) $wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE post_id = %d AND meta_key = %s AND meta_value = ''",
+					$domain,
+					$license->ID,
+					QMLS_CPT::META_DOMAIN
+				)
+			);
+
+			// Doğrudan $wpdb yazımı meta cache'ini güncellemez; kalıcı object cache'te bayatlamayı önle.
+			wp_cache_delete( $license->ID, 'post_meta' );
+
+			if ( $locked ) {
+				QMLS_Helpers::add_audit_entry( $license->ID, 'domain_kilitlendi', $domain );
+			}
+
+			$saved_domain = $locked
+				? $domain
+				: QMLS_Helpers::normalize_domain( get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) );
 		}
 
 		if ( $saved_domain !== $domain ) {

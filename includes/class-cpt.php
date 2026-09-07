@@ -38,9 +38,34 @@ class QMLS_CPT {
 	const META_MODULES = 'allowed_modules';
 
 	/**
+	 * Son kullanma tarihi meta anahtarı ("Y-m-d"; boş = süresiz).
+	 */
+	const META_EXPIRES = 'expires_at';
+
+	/**
 	 * Notlar meta anahtarı.
 	 */
 	const META_NOTES = 'notlar';
+
+	/**
+	 * Son görülme meta anahtarı (unix zaman damgası; 0 = hiç görülmedi).
+	 */
+	const META_LAST_SEEN = 'last_seen';
+
+	/**
+	 * İstemci plugin sürümü meta anahtarı (client_version REST parametresinden).
+	 */
+	const META_CLIENT_VERSION = 'client_version';
+
+	/**
+	 * Aktivite/audit log meta anahtarı.
+	 *
+	 * Herhangi bir formdan doğrudan yazılmadığı, yalnızca sistem tarafından
+	 * üretildiği için register_post_meta() ile kaydedilmez (diğer META_*
+	 * alanlarının aksine); alt çizgi öneki WP'nin varsayılan meta kutusunda
+	 * gösterilmemesini sağlar.
+	 */
+	const META_AUDIT_LOG = '_qmls_audit_log';
 
 	/**
 	 * Aktif durum değeri.
@@ -108,8 +133,6 @@ class QMLS_CPT {
 	 * @return void
 	 */
 	public static function register_meta() {
-		$auth_callback = array( __CLASS__, 'meta_auth_callback' );
-
 		register_post_meta(
 			self::POST_TYPE,
 			self::META_API_KEY,
@@ -120,7 +143,6 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_text_field',
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -134,7 +156,6 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_text_field',
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -148,7 +169,6 @@ class QMLS_CPT {
 				'default'           => self::STATUS_ACTIVE,
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( __CLASS__, 'sanitize_status' ),
-				'auth_callback'     => $auth_callback,
 			)
 		);
 
@@ -162,7 +182,19 @@ class QMLS_CPT {
 				'default'           => array(),
 				'show_in_rest'      => false,
 				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_modules' ),
-				'auth_callback'     => $auth_callback,
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_EXPIRES,
+			array(
+				'type'              => 'string',
+				'description'       => __( 'Son kullanma tarihi (Y-m-d); boşsa süresiz.', 'qmls' ),
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => false,
+				'sanitize_callback' => array( 'QMLS_Helpers', 'sanitize_expiry_date' ),
 			)
 		);
 
@@ -176,23 +208,34 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_textarea_field',
-				'auth_callback'     => $auth_callback,
 			)
 		);
-	}
 
-	/**
-	 * Meta alanlarına yazma yetkisini kontrol eder.
-	 *
-	 * @param bool   $allowed   Mevcut izin durumu.
-	 * @param string $meta_key  Meta anahtarı.
-	 * @param int    $object_id Post ID.
-	 * @return bool Yetki var mı.
-	 */
-	public static function meta_auth_callback( $allowed, $meta_key, $object_id ) {
-		unset( $allowed, $meta_key );
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_LAST_SEEN,
+			array(
+				'type'              => 'integer',
+				'description'       => __( 'İstemcinin sunucuya en son ulaştığı an (unix zaman damgası).', 'qmls' ),
+				'single'            => true,
+				'default'           => 0,
+				'show_in_rest'      => false,
+				'sanitize_callback' => 'absint',
+			)
+		);
 
-		return current_user_can( 'edit_post', $object_id );
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_CLIENT_VERSION,
+			array(
+				'type'              => 'string',
+				'description'       => __( 'İstemcinin en son bildirdiği plugin sürümü.', 'qmls' ),
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => false,
+				'sanitize_callback' => 'sanitize_text_field',
+			)
+		);
 	}
 
 	/**

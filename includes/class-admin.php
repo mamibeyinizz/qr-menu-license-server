@@ -47,7 +47,9 @@ class QMLS_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_qmls_save_license', array( $this, 'handle_save' ) );
 		add_action( 'admin_post_qmls_unlock_domain', array( $this, 'handle_unlock_domain' ) );
+		add_action( 'admin_post_qmls_regenerate_key', array( $this, 'handle_regenerate_key' ) );
 		add_action( 'admin_post_qmls_delete_license', array( $this, 'handle_delete' ) );
+		add_action( 'admin_post_qmls_export_csv', array( $this, 'handle_export_csv' ) );
 	}
 
 	/**
@@ -115,11 +117,12 @@ class QMLS_Admin {
 			'qmls-admin',
 			'qmlsAdmin',
 			array(
-				'copied'        => __( 'Kopyalandı!', 'qmls' ),
-				'copy'          => __( 'Kopyala', 'qmls' ),
-				'copyFailed'    => __( 'Kopyalanamadı, key\'i elle seçip kopyalayın.', 'qmls' ),
-				'confirmUnlock' => __( 'Domain kilidi kaldırılsın mı? Müşteri plugin\'i bir sonraki doğrulamada hangi domainde çalışıyorsa oraya kilitlenir.', 'qmls' ),
-				'confirmDelete' => __( 'Bu lisans çöpe taşınsın mı?', 'qmls' ),
+				'copied'            => __( 'Kopyalandı!', 'qmls' ),
+				'copy'              => __( 'Kopyala', 'qmls' ),
+				'copyFailed'        => __( 'Kopyalanamadı, key\'i elle seçip kopyalayın.', 'qmls' ),
+				'confirmUnlock'     => __( 'Domain kilidi kaldırılsın mı? Müşteri plugin\'i bir sonraki doğrulamada hangi domainde çalışıyorsa oraya kilitlenir.', 'qmls' ),
+				'confirmRegenerate' => __( 'API key yeniden üretilsin mi? Eski key hemen geçersiz olur; müşteri plugin\'inde yeni key\'i girmeniz gerekir.', 'qmls' ),
+				'confirmDelete'     => __( 'Bu lisans çöpe taşınsın mı?', 'qmls' ),
 			)
 		);
 	}
@@ -171,6 +174,11 @@ class QMLS_Admin {
 	 * Endpoint testinin nonce action adı.
 	 */
 	const NONCE_SELFTEST = 'qmls_selftest';
+
+	/**
+	 * CSV dışa aktarmanın nonce action adı.
+	 */
+	const NONCE_EXPORT = 'qmls_export_csv';
 
 	/**
 	 * Kendi endpoint'ine gerçek bir istek atarak dışarıdan erişilebilirliğini
@@ -328,6 +336,15 @@ class QMLS_Admin {
 				<?php esc_html_e( '+ Yeni Lisans Ekle', 'qmls' ); ?>
 			</a>
 
+			<?php if ( ! empty( $licenses ) ) : ?>
+				<a
+					class="button qmls-button-block"
+					href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=qmls_export_csv' ), self::NONCE_EXPORT ) ); ?>"
+				>
+					<?php esc_html_e( 'CSV olarak dışa aktar', 'qmls' ); ?>
+				</a>
+			<?php endif; ?>
+
 			<?php if ( empty( $licenses ) ) : ?>
 				<div class="qmls-empty">
 					<p><?php esc_html_e( 'Henüz lisans kaydı yok.', 'qmls' ); ?></p>
@@ -341,12 +358,19 @@ class QMLS_Admin {
 						$domain  = (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true );
 						$modules = QMLS_Helpers::get_license_modules( $license->ID );
 						$is_on   = QMLS_CPT::STATUS_ACTIVE === $status;
+						$expired = QMLS_Helpers::is_expired( $license->ID );
+
+						$last_seen = (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true );
 						?>
 						<a class="qmls-card" href="<?php echo esc_url( self::get_edit_url( $license->ID ) ); ?>">
 							<span class="qmls-card-title"><?php echo esc_html( get_the_title( $license ) ); ?></span>
-							<span class="qmls-badge <?php echo $is_on ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
-								<?php echo $is_on ? esc_html__( 'Aktif', 'qmls' ) : esc_html__( 'Pasif', 'qmls' ); ?>
-							</span>
+							<?php if ( $expired ) : ?>
+								<span class="qmls-badge qmls-badge-inactive"><?php esc_html_e( 'Süresi doldu', 'qmls' ); ?></span>
+							<?php else : ?>
+								<span class="qmls-badge <?php echo $is_on ? 'qmls-badge-active' : 'qmls-badge-inactive'; ?>">
+									<?php echo $is_on ? esc_html__( 'Aktif', 'qmls' ) : esc_html__( 'Pasif', 'qmls' ); ?>
+								</span>
+							<?php endif; ?>
 							<span class="qmls-card-meta">
 								<?php if ( '' !== $domain ) : ?>
 									<span class="qmls-card-domain"><?php echo esc_html( $domain ); ?></span>
@@ -361,6 +385,19 @@ class QMLS_Admin {
 										count( $modules ),
 										(int) $total_modules
 									);
+									?>
+								</span>
+								<span class="qmls-card-lastseen qmls-muted">
+									<?php
+									if ( $last_seen > 0 ) {
+										printf(
+											/* translators: %s: "3 saat" gibi okunabilir zaman farkı */
+											esc_html__( 'Son görülme: %s önce', 'qmls' ),
+											esc_html( human_time_diff( $last_seen, time() ) )
+										);
+									} else {
+										esc_html_e( 'Hiç görülmedi', 'qmls' );
+									}
 									?>
 								</span>
 							</span>
@@ -398,6 +435,9 @@ class QMLS_Admin {
 		$domain   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) : '';
 		$status   = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
 		$notes    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
+		$expires   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
+		$last_seen      = $license ? (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true ) : 0;
+		$client_version = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true ) : '';
 		$selected = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
 		$modules  = QMLS_Helpers::get_modules();
 		?>
@@ -414,6 +454,8 @@ class QMLS_Admin {
 				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Lisans kaydedildi.', 'qmls' ); ?></p></div>
 			<?php elseif ( 'unlocked' === $notice ) : ?>
 				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'Domain kilidi kaldırıldı. Bir sonraki doğrulamada yeni domain kaydedilecek.', 'qmls' ); ?></p></div>
+			<?php elseif ( 'regenerated' === $notice ) : ?>
+				<div class="notice notice-success qmls-notice"><p><?php esc_html_e( 'API key yeniden üretildi. Eski key artık geçersiz; müşteri plugin\'ine yeni key\'i girmeniz gerekir.', 'qmls' ); ?></p></div>
 			<?php elseif ( 'missing_title' === $notice ) : ?>
 				<div class="notice notice-error qmls-notice"><p><?php esc_html_e( 'Firma adı zorunludur.', 'qmls' ); ?></p></div>
 			<?php endif; ?>
@@ -444,6 +486,22 @@ class QMLS_Admin {
 						placeholder="<?php esc_attr_e( 'Örn. X Restoran', 'qmls' ); ?>"
 						required
 					/>
+				</div>
+
+				<div class="qmls-field">
+					<span class="qmls-label"><?php esc_html_e( 'Paket şablonu', 'qmls' ); ?></span>
+					<div class="qmls-tier-list">
+						<?php foreach ( QMLS_Helpers::get_tiers() as $tier ) : ?>
+							<button
+								type="button"
+								class="button qmls-tier-button"
+								data-tier-modules="<?php echo esc_attr( wp_json_encode( array_values( $tier['modules'] ) ) ); ?>"
+							>
+								<?php echo esc_html( $tier['label'] ); ?>
+							</button>
+						<?php endforeach; ?>
+					</div>
+					<p class="qmls-help"><?php esc_html_e( 'Bir pakete tıklamak aşağıdaki modül listesini doldurur; kaydetmeden önce dilediğiniz gibi değiştirebilirsiniz.', 'qmls' ); ?></p>
 				</div>
 
 				<div class="qmls-field">
@@ -482,6 +540,18 @@ class QMLS_Admin {
 				</div>
 
 				<div class="qmls-field">
+					<label class="qmls-label" for="qmls-expires"><?php esc_html_e( 'Son kullanma tarihi (opsiyonel)', 'qmls' ); ?></label>
+					<input
+						type="date"
+						id="qmls-expires"
+						name="expires_at"
+						class="qmls-input"
+						value="<?php echo esc_attr( $expires ); ?>"
+					/>
+					<p class="qmls-help"><?php esc_html_e( 'Boş bırakılırsa lisansın süresi dolmaz.', 'qmls' ); ?></p>
+				</div>
+
+				<div class="qmls-field">
 					<span class="qmls-label"><?php esc_html_e( 'Domain', 'qmls' ); ?></span>
 					<p class="qmls-domain-value">
 						<?php if ( '' !== $domain ) : ?>
@@ -495,6 +565,33 @@ class QMLS_Admin {
 						<?php else : ?>
 							<?php esc_html_e( 'Henüz aktifleşmedi', 'qmls' ); ?>
 						<?php endif; ?>
+					</p>
+					<p class="qmls-help">
+						<?php
+						if ( $last_seen > 0 ) {
+							printf(
+								/* translators: 1: "3 saat" gibi okunabilir zaman farkı, 2: tam tarih/saat */
+								esc_html__( 'Son görülme: %1$s önce (%2$s)', 'qmls' ),
+								esc_html( human_time_diff( $last_seen, time() ) ),
+								esc_html( wp_date( 'd.m.Y H:i', $last_seen ) )
+							);
+						} else {
+							esc_html_e( 'Son görülme: hiç', 'qmls' );
+						}
+						?>
+					</p>
+					<p class="qmls-help">
+						<?php
+						if ( '' !== $client_version ) {
+							printf(
+								/* translators: %s: istemcinin bildirdiği plugin sürümü */
+								esc_html__( 'İstemci sürümü: %s', 'qmls' ),
+								esc_html( $client_version )
+							);
+						} else {
+							esc_html_e( 'İstemci sürümü: bilinmiyor', 'qmls' );
+						}
+						?>
 					</p>
 				</div>
 
@@ -525,6 +622,15 @@ class QMLS_Admin {
 					<?php endif; ?>
 
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-inline-form">
+						<input type="hidden" name="action" value="qmls_regenerate_key" />
+						<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
+						<?php wp_nonce_field( 'qmls_regenerate_key_' . $license_id, 'qmls_nonce' ); ?>
+						<button type="submit" class="button qmls-button-block qmls-confirm" data-confirm="regenerate">
+							<?php esc_html_e( 'API key\'i yeniden üret', 'qmls' ); ?>
+						</button>
+					</form>
+
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="qmls-inline-form">
 						<input type="hidden" name="action" value="qmls_delete_license" />
 						<input type="hidden" name="license_id" value="<?php echo esc_attr( (string) $license_id ); ?>" />
 						<?php wp_nonce_field( 'qmls_delete_license_' . $license_id, 'qmls_nonce' ); ?>
@@ -533,6 +639,32 @@ class QMLS_Admin {
 						</button>
 					</form>
 				</div>
+
+				<?php $audit_log = QMLS_Helpers::get_audit_log( $license_id ); ?>
+
+				<?php if ( ! empty( $audit_log ) ) : ?>
+					<div class="qmls-field">
+						<span class="qmls-label"><?php esc_html_e( 'Aktivite geçmişi', 'qmls' ); ?></span>
+						<div class="qmls-audit-list">
+							<?php foreach ( $audit_log as $entry ) : ?>
+								<div class="qmls-audit-item">
+									<span class="qmls-audit-time">
+										<?php echo esc_html( wp_date( 'd.m.Y H:i', (int) $entry['time'] ) ); ?>
+									</span>
+									<span class="qmls-audit-action">
+										<?php echo esc_html( QMLS_Helpers::get_audit_action_label( $entry['action'] ) ); ?>
+										<?php if ( ! empty( $entry['detail'] ) ) : ?>
+											<span class="qmls-muted"> — <?php echo esc_html( $entry['detail'] ); ?></span>
+										<?php endif; ?>
+									</span>
+									<span class="qmls-audit-user qmls-muted">
+										<?php echo esc_html( isset( $entry['user'] ) ? $entry['user'] : '' ); ?>
+									</span>
+								</div>
+							<?php endforeach; ?>
+						</div>
+					</div>
+				<?php endif; ?>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -559,6 +691,8 @@ class QMLS_Admin {
 		$modules = QMLS_Helpers::sanitize_modules( $modules );
 		$status  = isset( $_POST['durum'] ) ? QMLS_CPT::STATUS_ACTIVE : QMLS_CPT::STATUS_INACTIVE;
 		$notes   = isset( $_POST['notlar'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notlar'] ) ) : '';
+		$expires = isset( $_POST['expires_at'] ) ? QMLS_Helpers::sanitize_expiry_date( wp_unslash( $_POST['expires_at'] ) ) : '';
+		$is_new  = 0 === $license_id;
 
 		if ( $license_id > 0 ) {
 			$license = get_post( $license_id );
@@ -594,6 +728,18 @@ class QMLS_Admin {
 		update_post_meta( $license_id, QMLS_CPT::META_MODULES, $modules );
 		update_post_meta( $license_id, QMLS_CPT::META_STATUS, $status );
 		update_post_meta( $license_id, QMLS_CPT::META_NOTES, $notes );
+		update_post_meta( $license_id, QMLS_CPT::META_EXPIRES, $expires );
+
+		QMLS_Helpers::add_audit_entry(
+			$license_id,
+			$is_new ? 'olusturuldu' : 'guncellendi',
+			sprintf(
+				'%1$s · %2$d modül · bitiş: %3$s',
+				QMLS_CPT::STATUS_ACTIVE === $status ? __( 'aktif', 'qmls' ) : __( 'pasif', 'qmls' ),
+				count( $modules ),
+				'' !== $expires ? $expires : __( 'süresiz', 'qmls' )
+			)
+		);
 
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'saved' ) ) );
 		exit;
@@ -615,9 +761,112 @@ class QMLS_Admin {
 			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
 		}
 
+		$old_domain = (string) get_post_meta( $license_id, QMLS_CPT::META_DOMAIN, true );
+
 		update_post_meta( $license_id, QMLS_CPT::META_DOMAIN, '' );
 
+		QMLS_Helpers::add_audit_entry( $license_id, 'domain_kilidi_kaldirildi', $old_domain );
+
 		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'unlocked' ) ) );
+		exit;
+	}
+
+	/**
+	 * API key'i yeniden üretir; eski key anında geçersiz olur.
+	 *
+	 * Domain kilidine dokunulmaz: aynı site için yalnızca anahtar değişir,
+	 * müşteri plugin'inde yeni key girildiğinde doğrulama kaldığı yerden
+	 * devam eder.
+	 *
+	 * @return void
+	 */
+	public function handle_regenerate_key() {
+		$license_id = isset( $_POST['license_id'] ) ? absint( wp_unslash( $_POST['license_id'] ) ) : 0;
+
+		$this->verify_request( 'qmls_regenerate_key_' . $license_id );
+
+		$license = get_post( $license_id );
+
+		if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
+			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
+		}
+
+		update_post_meta( $license_id, QMLS_CPT::META_API_KEY, qmls_generate_api_key() );
+
+		QMLS_Helpers::add_audit_entry( $license_id, 'api_key_yenilendi' );
+
+		wp_safe_redirect( self::get_edit_url( $license_id, array( 'qmls_notice' => 'regenerated' ) ) );
+		exit;
+	}
+
+	/**
+	 * Tüm lisansları CSV olarak indirir.
+	 *
+	 * @return void
+	 */
+	public function handle_export_csv() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'Bu işlem için yetkiniz yok.', 'qmls' ) );
+		}
+
+		check_admin_referer( self::NONCE_EXPORT );
+
+		$licenses = get_posts(
+			array(
+				'post_type'        => QMLS_CPT::POST_TYPE,
+				'post_status'      => array( 'publish', 'draft' ),
+				'posts_per_page'   => -1,
+				'orderby'          => 'title',
+				'order'            => 'ASC',
+				'suppress_filters' => false,
+			)
+		);
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="qmls-lisanslar-' . gmdate( 'Y-m-d' ) . '.csv"' );
+
+		$output = fopen( 'php://output', 'w' );
+
+		// Excel'in UTF-8 karakterleri (ör. Türkçe) doğru göstermesi için BOM.
+		fwrite( $output, "\xEF\xBB\xBF" );
+
+		fputcsv(
+			$output,
+			array(
+				__( 'Firma Adı', 'qmls' ),
+				__( 'API Key', 'qmls' ),
+				__( 'Domain', 'qmls' ),
+				__( 'Durum', 'qmls' ),
+				__( 'Modüller', 'qmls' ),
+				__( 'Son kullanma tarihi', 'qmls' ),
+				__( 'Son görülme', 'qmls' ),
+				__( 'İstemci sürümü', 'qmls' ),
+				__( 'Notlar', 'qmls' ),
+			)
+		);
+
+		foreach ( $licenses as $license ) {
+			$status    = QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) );
+			$last_seen = (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true );
+
+			fputcsv(
+				$output,
+				array(
+					get_the_title( $license ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_API_KEY, true ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ),
+					QMLS_CPT::STATUS_ACTIVE === $status ? __( 'Aktif', 'qmls' ) : __( 'Pasif', 'qmls' ),
+					implode( ', ', QMLS_Helpers::get_license_modules( $license->ID ) ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ),
+					$last_seen > 0 ? wp_date( 'Y-m-d H:i', $last_seen ) : '',
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_CLIENT_VERSION, true ),
+					(string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ),
+				)
+			);
+		}
+
+		fclose( $output );
 		exit;
 	}
 
@@ -636,6 +885,8 @@ class QMLS_Admin {
 		if ( ! $license instanceof WP_Post || QMLS_CPT::POST_TYPE !== $license->post_type ) {
 			wp_die( esc_html__( 'Lisans bulunamadı.', 'qmls' ) );
 		}
+
+		QMLS_Helpers::add_audit_entry( $license_id, 'silindi' );
 
 		wp_trash_post( $license_id );
 

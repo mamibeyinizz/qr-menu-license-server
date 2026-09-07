@@ -33,6 +33,8 @@ class QMLS_Helpers {
 			'qr-masa-oturum-guvenligi'  => __( 'QR Masa Oturum Güvenliği', 'qmls' ),
 			'qr-acilis-ekrani'          => __( 'Açılış Ekranı', 'qmls' ),
 			'header-footer-builder'     => __( 'Header Footer Builder', 'qmls' ),
+			'qr-menu-muhendisligi'      => __( 'Menü Mühendisliği', 'qmls' ),
+			'qr-servis-paneli'          => __( 'Servis Paneli', 'qmls' ),
 		);
 
 		/**
@@ -41,6 +43,53 @@ class QMLS_Helpers {
 		 * @param array<string, string> $modules Modül slug => etiket.
 		 */
 		return apply_filters( 'qmls_modules', $modules );
+	}
+
+	/**
+	 * Hazır paket şablonları: slug => (etiket, modül slug listesi).
+	 *
+	 * Sadece admin formunda modül checkbox'larını tek tıkla doldurmak için
+	 * kullanılır; lisans kaydında ayrı bir "paket" alanı tutulmaz, seçim
+	 * sonrası yine mevcut allowed_modules listesi kaydedilir.
+	 *
+	 * @return array<string, array{label:string, modules:string[]}> Paket slug => tanım.
+	 */
+	public static function get_tiers() {
+		$tiers = array(
+			'baslangic' => array(
+				'label'   => __( 'Başlangıç', 'qmls' ),
+				'modules' => array(
+					'restoran-menu',
+					'qr-masa',
+					'yorum-feedback',
+				),
+			),
+			'pro'       => array(
+				'label'   => __( 'Pro', 'qmls' ),
+				'modules' => array(
+					'restoran-menu',
+					'qr-masa',
+					'yorum-feedback',
+					'qr-analiz',
+					'qr-galeri',
+					'qr-ceviri',
+					'qr-calisma-saatleri',
+					'qr-acilis-ekrani',
+					'header-footer-builder',
+				),
+			),
+			'kurumsal'  => array(
+				'label'   => __( 'Kurumsal', 'qmls' ),
+				'modules' => self::get_module_slugs(),
+			),
+		);
+
+		/**
+		 * Paket şablonlarını filtreler.
+		 *
+		 * @param array<string, array{label:string, modules:string[]}> $tiers Paket slug => tanım.
+		 */
+		return apply_filters( 'qmls_tiers', $tiers );
 	}
 
 	/**
@@ -79,6 +128,132 @@ class QMLS_Helpers {
 		$modules = get_post_meta( $license_id, QMLS_CPT::META_MODULES, true );
 
 		return self::sanitize_modules( $modules );
+	}
+
+	/**
+	 * Son kullanma tarihini temizler.
+	 *
+	 * @param mixed $date Ham tarih değeri.
+	 * @return string Geçerli "Y-m-d" tarihi ya da süresiz için boş string.
+	 */
+	public static function sanitize_expiry_date( $date ) {
+		$date = sanitize_text_field( (string) $date );
+
+		if ( '' === $date ) {
+			return '';
+		}
+
+		$parsed = DateTime::createFromFormat( 'Y-m-d', $date );
+
+		if ( ! $parsed || $parsed->format( 'Y-m-d' ) !== $date ) {
+			return '';
+		}
+
+		return $date;
+	}
+
+	/**
+	 * Bir lisansın süresi dolmuş mu?
+	 *
+	 * Son kullanma tarihi tanımlı değilse lisans süresiz kabul edilir.
+	 * Tanımlıysa o günün sonuna kadar geçerlidir.
+	 *
+	 * @param int $license_id Lisans post ID.
+	 * @return bool Süresi dolmuş mu.
+	 */
+	public static function is_expired( $license_id ) {
+		$expires = self::sanitize_expiry_date( get_post_meta( $license_id, QMLS_CPT::META_EXPIRES, true ) );
+
+		if ( '' === $expires ) {
+			return false;
+		}
+
+		$expires_ts = strtotime( $expires . ' 23:59:59' );
+
+		return false !== $expires_ts && $expires_ts < time();
+	}
+
+	/**
+	 * Bir lisans için tutulan azami aktivite kaydı sayısı.
+	 */
+	const AUDIT_LOG_MAX = 50;
+
+	/**
+	 * Aktivite kaydı işlem kodlarının okunabilir Türkçe karşılığı.
+	 *
+	 * @return array<string, string> İşlem kodu => etiket.
+	 */
+	public static function get_audit_action_labels() {
+		return array(
+			'olusturuldu'              => __( 'Lisans oluşturuldu', 'qmls' ),
+			'guncellendi'              => __( 'Lisans güncellendi', 'qmls' ),
+			'domain_kilitlendi'        => __( 'Domain otomatik kilitlendi', 'qmls' ),
+			'domain_kilidi_kaldirildi' => __( 'Domain kilidi kaldırıldı', 'qmls' ),
+			'api_key_yenilendi'        => __( 'API key yenilendi', 'qmls' ),
+			'surum_guncellendi'        => __( 'İstemci sürümü değişti', 'qmls' ),
+			'silindi'                  => __( 'Çöpe taşındı', 'qmls' ),
+		);
+	}
+
+	/**
+	 * Bir işlem koduna karşılık gelen okunabilir etiketi döndürür.
+	 *
+	 * @param string $action İşlem kodu.
+	 * @return string Etiket; tanınmayan kodlar olduğu gibi döner.
+	 */
+	public static function get_audit_action_label( $action ) {
+		$labels = self::get_audit_action_labels();
+
+		return isset( $labels[ $action ] ) ? $labels[ $action ] : $action;
+	}
+
+	/**
+	 * Bir lisansa aktivite kaydı ekler.
+	 *
+	 * Sadece son AUDIT_LOG_MAX kayıt tutulur; eskiler sessizce düşer.
+	 *
+	 * @param int    $license_id Lisans post ID.
+	 * @param string $action     İşlem kodu (bkz. get_audit_action_labels()).
+	 * @param string $detail     Opsiyonel kısa açıklama (ör. domain adı).
+	 * @return void
+	 */
+	public static function add_audit_entry( $license_id, $action, $detail = '' ) {
+		$log = get_post_meta( $license_id, QMLS_CPT::META_AUDIT_LOG, true );
+
+		if ( ! is_array( $log ) ) {
+			$log = array();
+		}
+
+		$user = wp_get_current_user();
+
+		$log[] = array(
+			'time'   => time(),
+			'user'   => ( $user && $user->exists() ) ? $user->user_login : __( 'sistem', 'qmls' ),
+			'action' => sanitize_text_field( $action ),
+			'detail' => sanitize_text_field( $detail ),
+		);
+
+		if ( count( $log ) > self::AUDIT_LOG_MAX ) {
+			$log = array_slice( $log, -self::AUDIT_LOG_MAX );
+		}
+
+		update_post_meta( $license_id, QMLS_CPT::META_AUDIT_LOG, $log );
+	}
+
+	/**
+	 * Bir lisansın aktivite kaydını en yeniden en eskiye döndürür.
+	 *
+	 * @param int $license_id Lisans post ID.
+	 * @return array<int, array{time:int,user:string,action:string,detail:string}> Kayıt listesi.
+	 */
+	public static function get_audit_log( $license_id ) {
+		$log = get_post_meta( $license_id, QMLS_CPT::META_AUDIT_LOG, true );
+
+		if ( ! is_array( $log ) ) {
+			return array();
+		}
+
+		return array_reverse( $log );
 	}
 
 	/**

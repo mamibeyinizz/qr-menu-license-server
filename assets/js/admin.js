@@ -79,13 +79,16 @@
 	 */
 	function initConfirmButtons() {
 		var buttons = document.querySelectorAll( '.qmls-confirm' );
+		var messages = {
+			delete:     strings.confirmDelete || 'Bu kayıt silinsin mi?',
+			regenerate: strings.confirmRegenerate || 'API key yeniden üretilsin mi?',
+			unlock:     strings.confirmUnlock || 'Domain kilidi kaldırılsın mı?'
+		};
 
 		Array.prototype.forEach.call( buttons, function ( button ) {
 			button.addEventListener( 'click', function ( event ) {
 				var type = button.getAttribute( 'data-confirm' );
-				var message = 'delete' === type
-					? ( strings.confirmDelete || 'Bu kayıt silinsin mi?' )
-					: ( strings.confirmUnlock || 'Domain kilidi kaldırılsın mı?' );
+				var message = messages[ type ] || messages.unlock;
 
 				if ( ! window.confirm( message ) ) {
 					event.preventDefault();
@@ -94,13 +97,43 @@
 		} );
 	}
 
+	/**
+	 * Paket şablonu butonlarını bağlar: tıklanınca modül checkbox'larını
+	 * pakete göre işaretler/kaldırır, formu göndermez.
+	 *
+	 * @return {void}
+	 */
+	function initTierButtons() {
+		var buttons = document.querySelectorAll( '.qmls-tier-button' );
+
+		Array.prototype.forEach.call( buttons, function ( button ) {
+			button.addEventListener( 'click', function () {
+				var modules = [];
+
+				try {
+					modules = JSON.parse( button.getAttribute( 'data-tier-modules' ) || '[]' );
+				} catch ( e ) {
+					modules = [];
+				}
+
+				var checkboxes = document.querySelectorAll( '.qmls-module-list input[type="checkbox"]' );
+
+				Array.prototype.forEach.call( checkboxes, function ( checkbox ) {
+					checkbox.checked = -1 !== modules.indexOf( checkbox.value );
+				} );
+			} );
+		} );
+	}
+
 	if ( 'loading' === document.readyState ) {
 		document.addEventListener( 'DOMContentLoaded', function () {
 			initCopyButtons();
 			initConfirmButtons();
+			initTierButtons();
 		} );
 	} else {
 		initCopyButtons();
 		initConfirmButtons();
+		initTierButtons();
 	}
 } )();

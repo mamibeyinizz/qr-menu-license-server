@@ -209,6 +209,17 @@
 	word-break: break-all;
 }
 
+/* Paket şablonu */
+.qmls-tier-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.qmls-tier-button {
+	min-height: 44px;
+}
+
 /* Modül listesi */
 .qmls-module-list {
 	display: flex;
@@ -239,6 +250,36 @@
 	height: 24px;
 	margin: 0;
 	flex: 0 0 auto;
+}
+
+/* Aktivite geçmişi */
+.qmls-audit-list {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #fff;
+	overflow: hidden;
+	max-height: 320px;
+	overflow-y: auto;
+}
+
+.qmls-audit-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 10px 14px;
+	border-bottom: 1px solid #e5e5e5;
+	font-size: 14px;
+}
+
+.qmls-audit-item:last-child {
+	border-bottom: 0;
+}
+
+.qmls-audit-time {
+	font-size: 12px;
+	color: #8c8f94;
 }
 
 .qmls-module-label {
