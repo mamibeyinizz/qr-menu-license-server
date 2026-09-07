@@ -48,6 +48,11 @@ class QMLS_CPT {
 	const META_NOTES = 'notlar';
 
 	/**
+	 * Son görülme meta anahtarı (unix zaman damgası; 0 = hiç görülmedi).
+	 */
+	const META_LAST_SEEN = 'last_seen';
+
+	/**
 	 * Aktif durum değeri.
 	 */
 	const STATUS_ACTIVE = 'aktif';
@@ -188,6 +193,19 @@ class QMLS_CPT {
 				'default'           => '',
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'sanitize_textarea_field',
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::META_LAST_SEEN,
+			array(
+				'type'              => 'integer',
+				'description'       => __( 'İstemcinin sunucuya en son ulaştığı an (unix zaman damgası).', 'qmls' ),
+				'single'            => true,
+				'default'           => 0,
+				'show_in_rest'      => false,
+				'sanitize_callback' => 'absint',
 			)
 		);
 	}

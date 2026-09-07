@@ -342,6 +342,8 @@ class QMLS_Admin {
 						$modules = QMLS_Helpers::get_license_modules( $license->ID );
 						$is_on   = QMLS_CPT::STATUS_ACTIVE === $status;
 						$expired = QMLS_Helpers::is_expired( $license->ID );
+
+						$last_seen = (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true );
 						?>
 						<a class="qmls-card" href="<?php echo esc_url( self::get_edit_url( $license->ID ) ); ?>">
 							<span class="qmls-card-title"><?php echo esc_html( get_the_title( $license ) ); ?></span>
@@ -366,6 +368,19 @@ class QMLS_Admin {
 										count( $modules ),
 										(int) $total_modules
 									);
+									?>
+								</span>
+								<span class="qmls-card-lastseen qmls-muted">
+									<?php
+									if ( $last_seen > 0 ) {
+										printf(
+											/* translators: %s: "3 saat" gibi okunabilir zaman farkı */
+											esc_html__( 'Son görülme: %s önce', 'qmls' ),
+											esc_html( human_time_diff( $last_seen, time() ) )
+										);
+									} else {
+										esc_html_e( 'Hiç görülmedi', 'qmls' );
+									}
 									?>
 								</span>
 							</span>
@@ -403,7 +418,8 @@ class QMLS_Admin {
 		$domain   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_DOMAIN, true ) : '';
 		$status   = $license ? QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) ) : QMLS_CPT::STATUS_ACTIVE;
 		$notes    = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_NOTES, true ) : '';
-		$expires  = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
+		$expires   = $license ? (string) get_post_meta( $license->ID, QMLS_CPT::META_EXPIRES, true ) : '';
+		$last_seen = $license ? (int) get_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, true ) : 0;
 		$selected = $license ? QMLS_Helpers::get_license_modules( $license->ID ) : array();
 		$modules  = QMLS_Helpers::get_modules();
 		?>
@@ -529,6 +545,20 @@ class QMLS_Admin {
 						<?php else : ?>
 							<?php esc_html_e( 'Henüz aktifleşmedi', 'qmls' ); ?>
 						<?php endif; ?>
+					</p>
+					<p class="qmls-help">
+						<?php
+						if ( $last_seen > 0 ) {
+							printf(
+								/* translators: 1: "3 saat" gibi okunabilir zaman farkı, 2: tam tarih/saat */
+								esc_html__( 'Son görülme: %1$s önce (%2$s)', 'qmls' ),
+								esc_html( human_time_diff( $last_seen, time() ) ),
+								esc_html( wp_date( 'd.m.Y H:i', $last_seen ) )
+							);
+						} else {
+							esc_html_e( 'Son görülme: hiç', 'qmls' );
+						}
+						?>
 					</p>
 				</div>
 

@@ -191,6 +191,9 @@ class QMLS_REST_API {
 			return new WP_REST_Response( array( 'status' => 'invalid' ), 404 );
 		}
 
+		// Geçerli bir key ile gelen her istek "son görülme" zamanını günceller.
+		update_post_meta( $license->ID, QMLS_CPT::META_LAST_SEEN, time() );
+
 		$status = QMLS_CPT::sanitize_status( get_post_meta( $license->ID, QMLS_CPT::META_STATUS, true ) );
 
 		if ( QMLS_CPT::STATUS_ACTIVE !== $status ) {
